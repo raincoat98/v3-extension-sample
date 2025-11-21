@@ -1,0 +1,12 @@
+{
+  "name": "firebase-auth-extension",
+  "version": "1.0.0",
+  "description": "Firebase Authentication Chrome Extension",
+  "scripts": {
+    "build": "node build-config.js",
+    "prebuild": "npm run build"
+  },
+  "devDependencies": {
+    "dotenv": "^16.3.1"
+  }
+}
