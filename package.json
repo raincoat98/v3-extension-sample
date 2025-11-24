@@ -1,0 +1,20 @@
+{
+  "name": "firebase-auth-extension-project",
+  "version": "1.0.0",
+  "description": "Firebase Auth Extension 프로젝트",
+  "private": true,
+  "scripts": {
+    "build": "npm run build:web && npm run build:extension",
+    "build:web": "cd web && npm install && npm run build",
+    "build:extension": "cd extension && npm install && npm run build",
+    "deploy": "npm run build && npm run deploy:firebase",
+    "deploy:firebase": "firebase deploy --only hosting",
+    "deploy:firestore": "firebase deploy --only firestore",
+    "deploy:all": "npm run build && firebase deploy",
+    "dev:web": "cd web && npm run dev",
+    "clean": "rm -rf web/dist extension/dist web/node_modules extension/node_modules"
+  },
+  "devDependencies": {
+    "firebase-tools": "^13.0.0"
+  }
+}
