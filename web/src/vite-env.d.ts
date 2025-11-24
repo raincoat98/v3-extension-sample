@@ -12,3 +12,20 @@ interface ImportMetaEnv {
 interface ImportMeta {
   readonly env: ImportMetaEnv;
 }
+
+// Chrome Extension 타입 정의
+declare const chrome:
+  | {
+      runtime?: {
+        id?: string;
+        sendMessage?: (
+          extensionId: string,
+          message: any,
+          responseCallback?: (response: any) => void
+        ) => void;
+        lastError?: {
+          message?: string;
+        };
+      };
+    }
+  | undefined;
