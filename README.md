@@ -9,6 +9,7 @@ test-extension/
 ├── extension/          # Chrome Extension v3
 │   ├── manifest.json
 │   ├── background.js   # Service Worker (인증 및 데이터 처리)
+│   ├── content-script.js # Content Script (웹 앱과 통신)
 │   ├── popup.html      # Extension 팝업 UI
 │   ├── popup.js        # Extension 팝업 로직
 │   ├── build-config.js # 빌드 스크립트 (환경 변수 주입)
@@ -24,18 +25,20 @@ test-extension/
         └── firebase-config.ts # Firebase 설정
 ```
 
-## 인증 플로우
+## 인증 플로우 (이벤트 기반)
 
 1. **Popup** → `sendMessage("LOGIN_GOOGLE")`
 2. **Background SW** → 새 탭 열기 → `https://your-domain.com/signin-popup?extension=true`
 3. **SignInPopup** → URL 파라미터 확인 → 자동으로 Google 로그인 시작
 4. **SignInPopup** → Firebase SDK `signInWithPopup()` 실행 → Google OAuth 팝업
-5. **SignInPopup** → 로그인 성공 시 `localStorage`와 `sessionStorage`에 인증 결과 저장
-6. **Background SW** → 주기적으로 탭의 `localStorage` 확인 (0.5초마다)
-7. **Background SW** → 인증 결과 발견 시 `chrome.storage.local`에 저장
+5. **SignInPopup** → 로그인 성공 시 `window.postMessage`로 인증 결과 전송
+6. **Content Script** → `window.postMessage` 감지 → `chrome.runtime.sendMessage`로 Background에 전달
+7. **Background SW** → 인증 결과 수신 → `chrome.storage.local`에 저장
 8. **Background SW** → Popup에 `AUTH_SUCCESS` 메시지 전송
 9. **Popup** → 로그인 상태 업데이트 및 Firestore 데이터 개수 표시
 10. **Background SW** → 로그인 완료 후 signin-popup 탭 자동 닫기
+
+**참고**: 이벤트 기반 통신을 사용하므로 폴링(주기적 확인) 없이 즉시 처리됩니다.
 
 ## 설정 방법
 

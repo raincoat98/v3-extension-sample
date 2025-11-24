@@ -15,7 +15,7 @@ if (!fs.existsSync(distDir)) {
 }
 
 // 복사할 파일 목록
-const filesToCopy = ["manifest.json", "popup.html", "popup.js"];
+const filesToCopy = ["manifest.json", "popup.html", "popup.js", "content-script.js"];
 
 // 복사할 아이콘 파일 목록
 const iconFiles = ["icon16.png", "icon48.png", "icon128.png"];

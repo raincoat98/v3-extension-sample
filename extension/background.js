@@ -21,6 +21,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true; // 비동기 응답을 위해 true 반환
   }
 
+  // Content script로부터 인증 결과 수신 (이벤트 기반)
+  if (message && message.type === "AUTH_RESULT_FROM_WEB") {
+    console.log("📥 Content script로부터 인증 결과 수신:", message);
+    handleAuthResultFromWeb(message.user, message.idToken, sender.tab?.id);
+    return true;
+  }
+
   return false;
 });
 
@@ -175,110 +182,19 @@ async function handleGoogleLogin(sendResponse) {
       active: true,
     });
 
-    // 탭 업데이트 리스너 (로드 완료 및 URL 변경 감지)
-    let checkStarted = false;
-    const tabUpdateListener = (tabId, changeInfo, updatedTab) => {
-      if (tabId === tab.id) {
-        // 탭이 완전히 로드되었을 때
-        if (changeInfo.status === "complete" && !checkStarted) {
-          checkStarted = true;
-          startCheckingAuthResult(tab.id);
-        }
+    // Content script가 자동으로 로드되므로 별도 주입 불필요
+    // Content script가 window.postMessage를 감지하여 chrome.runtime.sendMessage로 전달
+
+    // 최대 2분 후 타임아웃 (무한 대기 방지)
+    setTimeout(() => {
+      if (authResponseHandler) {
+        authResponseHandler({
+          success: false,
+          error: "인증 결과를 받지 못했습니다. 시간이 초과되었습니다.",
+        });
+        authResponseHandler = null;
       }
-    };
-
-    chrome.tabs.onUpdated.addListener(tabUpdateListener);
-
-    // 이미 로드된 경우를 대비
-    const currentTab = await chrome.tabs.get(tab.id);
-    if (currentTab.status === "complete" && !checkStarted) {
-      checkStarted = true;
-      startCheckingAuthResult(tab.id);
-    }
-
-    // 인증 결과 확인 함수
-    function startCheckingAuthResult(tabId) {
-      let checkCount = 0;
-      const checkAuthResult = setInterval(async () => {
-        checkCount++;
-        try {
-          // 탭이 여전히 존재하는지 확인
-          try {
-            await chrome.tabs.get(tabId);
-          } catch (tabError) {
-            // 탭이 존재하지 않으면 닫힌 것
-            clearInterval(checkAuthResult);
-            return;
-          }
-
-          // localStorage에서 인증 결과 확인 (chrome.scripting API 사용)
-          // 리다이렉트 후 메인 페이지(`/`)에서도 확인 가능하도록
-          try {
-            const results = await chrome.scripting.executeScript({
-              target: { tabId: tabId },
-              func: () => {
-                // localStorage 먼저 확인
-                let result = localStorage.getItem("extension_auth_result");
-                if (!result) {
-                  // localStorage에 없으면 sessionStorage 확인
-                  result = sessionStorage.getItem("extension_auth_result");
-                }
-                return result;
-              },
-            });
-
-            if (results && results[0] && results[0].result) {
-              try {
-                const authData = JSON.parse(results[0].result);
-                if (authData && authData.type === "AUTH_RESULT") {
-                  clearInterval(checkAuthResult);
-
-                  // localStorage 정리 (localStorage와 sessionStorage 모두)
-                  await chrome.scripting.executeScript({
-                    target: { tabId: tabId },
-                    func: () => {
-                      localStorage.removeItem("extension_auth_result");
-                      sessionStorage.removeItem("extension_auth_result");
-                    },
-                  });
-
-                  // 인증 결과 처리
-                  handleAuthResult(authData.user, authData.idToken, null, null);
-
-                  // 탭 닫기
-                  setTimeout(() => {
-                    chrome.tabs.remove(tabId).catch(() => {
-                      // 탭이 이미 닫혔을 수 있음
-                    });
-                  }, 500);
-                }
-              } catch (e) {
-                console.error("JSON 파싱 오류:", e);
-              }
-            }
-          } catch (scriptError) {
-            // 스크립트 실행 오류 (페이지가 아직 로드되지 않았을 수 있음)
-            // 무시하고 계속 확인
-          }
-        } catch (error) {
-          console.error("인증 결과 확인 오류:", error);
-          // 탭이 닫혔거나 접근할 수 없는 경우
-          clearInterval(checkAuthResult);
-        }
-      }, 500); // 0.5초마다 확인 (더 빠른 확인)
-
-      // 최대 2분 후 타임아웃 (무한 로딩 방지)
-      setTimeout(() => {
-        clearInterval(checkAuthResult);
-        if (authResponseHandler) {
-          authResponseHandler({
-            success: false,
-            error: "인증 결과를 받지 못했습니다. 시간이 초과되었습니다.",
-          });
-          authResponseHandler = null;
-        }
-      }, 120000); // 2분
-    }
+    }, 120000); // 2분
 
     // 탭이 닫히면 에러 처리
     chrome.tabs.onRemoved.addListener(function tabRemovedListener(tabId) {
@@ -297,6 +213,83 @@ async function handleGoogleLogin(sendResponse) {
     console.error("Google 로그인 처리 실패:", error);
     if (authResponseHandler) {
       authResponseHandler({ success: false, error: error.message });
+      authResponseHandler = null;
+    }
+  }
+}
+
+// 웹 앱으로부터 인증 결과 처리 (이벤트 기반)
+async function handleAuthResultFromWeb(user, idToken, tabId) {
+  try {
+    console.log("✅ 웹 앱으로부터 인증 결과 처리 시작");
+
+    // 사용자 정보 저장
+    await chrome.storage.local.set({
+      user: user,
+      idToken: idToken,
+      isAuthenticated: true,
+    });
+
+    // Popup에 응답 전송
+    if (authResponseHandler) {
+      authResponseHandler({
+        success: true,
+        user: user,
+        idToken: idToken,
+      });
+      authResponseHandler = null;
+    }
+
+    // 모든 탭에 로그인 완료 알림
+    chrome.runtime
+      .sendMessage({
+        type: "AUTH_SUCCESS",
+        user: user,
+      })
+      .catch(() => {
+        // 팝업이 닫혀있을 수 있으므로 에러 무시
+      });
+
+    // 로그인 성공 후 signin-popup 탭 닫기
+    if (tabId) {
+      setTimeout(() => {
+        chrome.tabs.remove(tabId).catch(() => {
+          // 탭이 이미 닫혔을 수 있음
+        });
+      }, 500);
+    } else {
+      // tabId가 없으면 URL로 찾기
+      chrome.tabs.query({ url: SIGNIN_POPUP_URL + "*" }, (tabs) => {
+        tabs.forEach((tab) => {
+          if (tab.id) {
+            chrome.tabs.remove(tab.id);
+          }
+        });
+      });
+    }
+
+    // localStorage 정리 (웹 앱에서 이미 정리했을 수 있지만 안전을 위해)
+    if (tabId) {
+      try {
+        await chrome.scripting.executeScript({
+          target: { tabId: tabId },
+          func: () => {
+            localStorage.removeItem("extension_auth_result");
+            sessionStorage.removeItem("extension_auth_result");
+          },
+        });
+      } catch (error) {
+        // 탭이 이미 닫혔을 수 있음
+        console.log("localStorage 정리 실패 (탭이 이미 닫힘):", error);
+      }
+    }
+  } catch (err) {
+    console.error("인증 결과 저장 실패:", err);
+    if (authResponseHandler) {
+      authResponseHandler({
+        success: false,
+        error: err.message,
+      });
       authResponseHandler = null;
     }
   }
