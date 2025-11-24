@@ -1,9 +1,20 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { createBrowserRouter, RouterProvider } from "react-router-dom";
 import "./index.css";
 import App from "./App";
 import SignInPopup from "./SignInPopup";
+
+const router = createBrowserRouter([
+  {
+    path: "/signin-popup",
+    element: <SignInPopup />,
+  },
+  {
+    path: "/",
+    element: <App />,
+  },
+]);
 
 const root = ReactDOM.createRoot(
   document.getElementById("root") as HTMLElement
@@ -11,12 +22,6 @@ const root = ReactDOM.createRoot(
 
 root.render(
   <React.StrictMode>
-    <BrowserRouter>
-      <Routes>
-        <Route path="/signin-popup" element={<SignInPopup />} />
-        <Route path="/" element={<App />} />
-      </Routes>
-    </BrowserRouter>
+    <RouterProvider router={router} />
   </React.StrictMode>
 );
-
