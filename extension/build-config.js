@@ -15,7 +15,7 @@ if (!fs.existsSync(distDir)) {
 }
 
 // 복사할 파일 목록
-const filesToCopy = ["manifest.json", "popup.html", "popup.js", "content-script.js"];
+const filesToCopy = ["manifest.json", "popup.html", "popup.js", "content-script.js", "offscreen.html", "offscreen.js"];
 
 // 복사할 아이콘 파일 목록
 const iconFiles = ["icon16.png", "icon48.png", "icon128.png"];
@@ -82,6 +82,11 @@ const backgroundPath = path.join(__dirname, "background.js");
 const backgroundDestPath = path.join(distDir, "background.js");
 let backgroundContent = fs.readFileSync(backgroundPath, "utf8");
 
+// offscreen.js의 SIGNIN_POPUP_URL과 WEB_APP_URL 업데이트
+const offscreenPath = path.join(__dirname, "offscreen.js");
+const offscreenDestPath = path.join(distDir, "offscreen.js");
+let offscreenContent = fs.readFileSync(offscreenPath, "utf8");
+
 // 환경 변수에서 URL 가져오기
 const signinPopupUrl = process.env.SIGNIN_POPUP_URL || " ";
 const webAppUrl = process.env.WEB_APP_URL || " ";
@@ -105,6 +110,22 @@ backgroundContent = backgroundContent.replace(
 fs.writeFileSync(backgroundDestPath, backgroundContent, "utf8");
 console.log(
   "✅ background.js의 SIGNIN_POPUP_URL과 WEB_APP_URL이 업데이트되었습니다."
+);
+
+// offscreen.js의 URL 업데이트
+offscreenContent = offscreenContent.replace(
+  /const WEB_APP_URL = "WEB_APP_URL_PLACEHOLDER";/,
+  `const WEB_APP_URL = "${webAppUrl}";`
+);
+
+offscreenContent = offscreenContent.replace(
+  /const SIGNIN_POPUP_URL = "SIGNIN_POPUP_URL_PLACEHOLDER";/,
+  `const SIGNIN_POPUP_URL = "${signinPopupUrl}";`
+);
+
+fs.writeFileSync(offscreenDestPath, offscreenContent, "utf8");
+console.log(
+  "✅ offscreen.js의 SIGNIN_POPUP_URL과 WEB_APP_URL이 업데이트되었습니다."
 );
 console.log(`   SIGNIN_POPUP_URL: ${signinPopupUrlWithParam}`);
 console.log(`   WEB_APP_URL: ${webAppUrl}`);

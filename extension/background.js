@@ -8,6 +8,9 @@ const WEB_APP_URL = "WEB_APP_URL_PLACEHOLDER"; // build-config.js에서 주입�
 // 응답 핸들러 저장 (Service Worker에서는 window 객체가 없으므로 전역 변수 사용)
 let authResponseHandler = null;
 
+// 활성 탭 추적 (데이터 개수 요청용)
+let activeDataCountTab = null;
+
 // 메시지 리스너
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message === "LOGIN_GOOGLE") {
@@ -23,53 +26,183 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   // Content script로부터 인증 결과 수신 (이벤트 기반)
   if (message && message.type === "AUTH_RESULT_FROM_WEB") {
-    console.log("📥 Content script로부터 인증 결과 수신:", message);
-    handleAuthResultFromWeb(message.user, message.idToken, sender.tab?.id);
+    console.log("📥 인증 결과 수신:", message);
+    // sender.tab.id를 사용하여 탭 ID 가져오기
+    const tabId = sender.tab ? sender.tab.id : null;
+    handleAuthResultFromWeb(message.user, message.idToken, tabId);
+    return true;
+  }
+
+  // Content script로부터 데이터 개수 응답 수신
+  if (message && message.type === "DATA_COUNT_RESPONSE") {
+    console.log("📥 데이터 개수 응답 수신:", message);
+    // 응답은 handleGetDataCount의 리스너에서 처리됨
     return true;
   }
 
   return false;
 });
 
-// 데이터 개수 가져오기 처리
+// 데이터 개수 가져오기 처리 (새 탭 사용)
 async function handleGetDataCount(sendResponse) {
   try {
-    console.log("🔍 웹 앱 탭 찾는 중...");
-    // 웹 앱 탭 찾기
-    const tabs = await chrome.tabs.query({
-      url: WEB_APP_URL + "/*",
-    });
+    console.log("🔍 새 탭을 통해 데이터 개수 요청...");
 
-    console.log("📍 찾은 탭 개수:", tabs.length);
+    // 응답 핸들러 저장
+    let responseSent = false;
 
-    if (tabs.length === 0) {
-      console.log("📂 웹 앱 탭이 없음, 새로 열기");
-      // 웹 앱 탭이 없으면 새로 열기
+    // Content script로부터 응답을 받을 리스너
+    const responseListener = (message, sender, sendResponseToMessage) => {
+      if (message && message.type === "DATA_COUNT_RESPONSE") {
+        if (!responseSent) {
+          responseSent = true;
+          chrome.runtime.onMessage.removeListener(responseListener);
+          console.log("✅ 데이터 개수 응답 수신:", message.response);
+
+          // 탭 닫기
+          if (activeDataCountTab) {
+            chrome.tabs.remove(activeDataCountTab).catch(() => {
+              // 탭이 이미 닫혔을 수 있음
+            });
+            activeDataCountTab = null;
+          }
+
+          sendResponse(message.response);
+        }
+        return true;
+      }
+      return false;
+    };
+
+    chrome.runtime.onMessage.addListener(responseListener);
+
+    // 타임아웃 설정 (15초)
+    setTimeout(() => {
+      if (!responseSent) {
+        responseSent = true;
+        chrome.runtime.onMessage.removeListener(responseListener);
+
+        // 탭 닫기
+        if (activeDataCountTab) {
+          chrome.tabs.remove(activeDataCountTab).catch(() => {});
+          activeDataCountTab = null;
+        }
+
+        sendResponse({
+          success: false,
+          error: "타임아웃: 웹 앱으로부터 응답을 받지 못했습니다.",
+        });
+      }
+    }, 15000);
+
+    // 새 탭 열기
+    try {
       const tab = await chrome.tabs.create({
         url: WEB_APP_URL,
-        active: false,
+        active: false, // 백그라운드에서 열기
       });
-
-      console.log("✅ 새 탭 생성됨:", tab.id);
+      activeDataCountTab = tab.id;
+      console.log("✅ 데이터 개수 조회용 탭 생성:", tab.id);
 
       // 탭이 로드될 때까지 대기
-      await new Promise((resolve) => {
-        const listener = (tabId, changeInfo) => {
-          if (tabId === tab.id && changeInfo.status === "complete") {
-            chrome.tabs.onUpdated.removeListener(listener);
-            console.log("✅ 탭 로드 완료");
-            resolve();
-          }
-        };
-        chrome.tabs.onUpdated.addListener(listener);
-      });
+      chrome.tabs.onUpdated.addListener(function listener(tabId, info) {
+        if (tabId === tab.id && info.status === "complete") {
+          chrome.tabs.onUpdated.removeListener(listener);
 
-      // 웹 앱에 데이터 개수 요청
-      requestDataCountFromWebApp(tab.id, sendResponse);
-    } else {
-      console.log("✅ 기존 탭 사용:", tabs[0].id);
-      // 기존 탭 사용
-      requestDataCountFromWebApp(tabs[0].id, sendResponse);
+          // Content script 준비 확인 및 메시지 전송 (재시도 로직 포함)
+          let retryCount = 0;
+          const maxRetries = 10;
+          const retryDelay = 500; // 0.5초
+
+          const checkAndSendMessage = () => {
+            // 먼저 content script가 준비되었는지 확인 (PING)
+            chrome.tabs.sendMessage(
+              tab.id,
+              { type: "PING" },
+              (pingResponse) => {
+                if (chrome.runtime.lastError) {
+                  const error =
+                    chrome.runtime.lastError.message ||
+                    String(chrome.runtime.lastError);
+
+                  // 재시도
+                  if (retryCount < maxRetries - 1) {
+                    retryCount++;
+                    console.log(
+                      `⏳ Content script 준비 대기 중... (${retryCount}/${maxRetries})`
+                    );
+                    setTimeout(checkAndSendMessage, retryDelay);
+                  } else {
+                    // 최대 재시도 횟수 초과
+                    console.error(`❌ Content script 준비 실패: ${error}`);
+                    if (!responseSent) {
+                      responseSent = true;
+                      chrome.runtime.onMessage.removeListener(responseListener);
+                      if (activeDataCountTab) {
+                        chrome.tabs.remove(activeDataCountTab).catch(() => {});
+                        activeDataCountTab = null;
+                      }
+                      sendResponse({
+                        success: false,
+                        error: `Content script가 준비되지 않았습니다: ${error}`,
+                      });
+                    }
+                  }
+                } else {
+                  // Content script가 준비됨 - 실제 메시지 전송
+                  console.log(
+                    "✅ Content script 준비 확인됨, 데이터 개수 요청 전송"
+                  );
+                  chrome.tabs.sendMessage(
+                    tab.id,
+                    { type: "GET_DATA_COUNT" },
+                    (response) => {
+                      if (chrome.runtime.lastError) {
+                        const error =
+                          chrome.runtime.lastError.message ||
+                          String(chrome.runtime.lastError);
+                        console.error("❌ 데이터 개수 요청 전송 실패:", error);
+                        if (!responseSent) {
+                          responseSent = true;
+                          chrome.runtime.onMessage.removeListener(
+                            responseListener
+                          );
+                          if (activeDataCountTab) {
+                            chrome.tabs
+                              .remove(activeDataCountTab)
+                              .catch(() => {});
+                            activeDataCountTab = null;
+                          }
+                          sendResponse({
+                            success: false,
+                            error: `데이터 개수 요청 실패: ${error}`,
+                          });
+                        }
+                      } else {
+                        // 성공적으로 전송됨 (실제 응답은 responseListener를 통해 받음)
+                        console.log(
+                          "✅ 데이터 개수 요청 전송 성공, 웹 앱 응답 대기 중..."
+                        );
+                        // 응답은 responseListener에서 처리됨
+                      }
+                    }
+                  );
+                }
+              }
+            );
+          };
+
+          // 첫 시도 (페이지 로드 후 약간의 지연)
+          setTimeout(checkAndSendMessage, 1000);
+        }
+      });
+    } catch (error) {
+      console.error("❌ 탭 생성 오류:", error);
+      if (!responseSent) {
+        responseSent = true;
+        chrome.runtime.onMessage.removeListener(responseListener);
+        sendResponse({ success: false, error: error.message });
+      }
     }
   } catch (error) {
     console.error("❌ handleGetDataCount 오류:", error);
@@ -77,138 +210,37 @@ async function handleGetDataCount(sendResponse) {
   }
 }
 
-// 웹 앱에 데이터 개수 요청
-async function requestDataCountFromWebApp(tabId, sendResponse) {
-  try {
-    console.log("📤 웹 앱에 데이터 개수 요청 전송 중...");
-    // 웹 앱 페이지에 스크립트 주입하여 데이터 개수 요청
-    const results = await chrome.scripting.executeScript({
-      target: { tabId: tabId },
-      func: () => {
-        return new Promise((resolve) => {
-          console.log("🔍 React 앱 로드 확인 중...");
-          // React 앱이 로드될 때까지 대기
-          const checkReactLoaded = setInterval(() => {
-            // React 앱이 로드되었는지 확인 (React DevTools 또는 특정 요소 확인)
-            const hasReactApp = document.querySelector(".App") !== null;
-
-            if (hasReactApp || document.readyState === "complete") {
-              clearInterval(checkReactLoaded);
-              console.log("✅ React 앱 로드 완료, 메시지 전송");
-
-              // 약간의 지연 후 메시지 전송 (React가 완전히 로드되도록)
-              setTimeout(() => {
-                // 웹 앱에 메시지 전송
-                console.log("📤 웹 앱에 메시지 전송:", {
-                  type: "GET_DATA_COUNT_FROM_EXTENSION",
-                });
-                window.postMessage(
-                  { type: "GET_DATA_COUNT_FROM_EXTENSION" },
-                  window.location.origin
-                );
-
-                // 웹 앱으로부터 응답 수신
-                const messageListener = (event) => {
-                  console.log("📥 메시지 수신:", event.data);
-                  if (
-                    event.data &&
-                    event.data.type === "DATA_COUNT_RESPONSE" &&
-                    event.origin === window.location.origin
-                  ) {
-                    console.log("✅ 응답 수신 완료:", event.data);
-                    window.removeEventListener("message", messageListener);
-                    resolve(event.data);
-                  }
-                };
-
-                window.addEventListener("message", messageListener);
-
-                // 타임아웃 (5초)
-                setTimeout(() => {
-                  window.removeEventListener("message", messageListener);
-                  console.warn("⏰ 타임아웃");
-                  resolve({
-                    success: false,
-                    error: "타임아웃: 웹 앱으로부터 응답을 받지 못했습니다.",
-                  });
-                }, 5000);
-              }, 500);
-            }
-          }, 100);
-
-          // 최대 10초 대기
-          setTimeout(() => {
-            clearInterval(checkReactLoaded);
-            console.warn("⏰ React 앱 로드 타임아웃");
-            resolve({
-              success: false,
-              error: "웹 앱이 로드되지 않았습니다.",
-            });
-          }, 10000);
-        });
-      },
-    });
-
-    console.log("📥 스크립트 실행 결과:", results);
-    if (results && results[0] && results[0].result) {
-      console.log("✅ 최종 응답:", results[0].result);
-      sendResponse(results[0].result);
-    } else {
-      console.error("❌ 응답 없음");
-      sendResponse({
-        success: false,
-        error: "웹 앱으로부터 응답을 받지 못했습니다.",
-      });
-    }
-  } catch (error) {
-    console.error("❌ requestDataCountFromWebApp 오류:", error);
-    sendResponse({ success: false, error: error.message });
-  }
-}
-
-// Google 로그인 처리
+// Google 로그인 처리 (새 탭 사용)
 async function handleGoogleLogin(sendResponse) {
   try {
     // 응답 핸들러 저장
     authResponseHandler = sendResponse;
 
-    // 새 탭으로 signin-popup 페이지 열기 (extension 파라미터 추가)
-    const signinUrl =
-      SIGNIN_POPUP_URL +
-      (SIGNIN_POPUP_URL.includes("?") ? "&" : "?") +
-      "extension=true";
-    const tab = await chrome.tabs.create({
-      url: signinUrl,
-      active: true,
-    });
+    // 새 탭으로 로그인 페이지 열기
+    try {
+      const tab = await chrome.tabs.create({
+        url: SIGNIN_POPUP_URL,
+        active: true, // 사용자가 볼 수 있도록 활성화
+      });
+      console.log("✅ 로그인 페이지 탭 생성:", tab.id);
 
-    // Content script가 자동으로 로드되므로 별도 주입 불필요
-    // Content script가 window.postMessage를 감지하여 chrome.runtime.sendMessage로 전달
-
-    // 최대 2분 후 타임아웃 (무한 대기 방지)
-    setTimeout(() => {
+      // 최대 2분 후 타임아웃 (무한 대기 방지)
+      setTimeout(() => {
+        if (authResponseHandler) {
+          authResponseHandler({
+            success: false,
+            error: "인증 결과를 받지 못했습니다. 시간이 초과되었습니다.",
+          });
+          authResponseHandler = null;
+        }
+      }, 120000); // 2분
+    } catch (error) {
+      console.error("❌ 로그인 페이지 열기 오류:", error);
       if (authResponseHandler) {
-        authResponseHandler({
-          success: false,
-          error: "인증 결과를 받지 못했습니다. 시간이 초과되었습니다.",
-        });
+        authResponseHandler({ success: false, error: error.message });
         authResponseHandler = null;
       }
-    }, 120000); // 2분
-
-    // 탭이 닫히면 에러 처리
-    chrome.tabs.onRemoved.addListener(function tabRemovedListener(tabId) {
-      if (tabId === tab.id) {
-        chrome.tabs.onRemoved.removeListener(tabRemovedListener);
-        // 탭이 닫혔지만 메시지를 받지 못한 경우
-    setTimeout(() => {
-          if (authResponseHandler) {
-            // 탭이 닫혔다는 것은 사용자가 취소했을 수도 있으므로 에러로 처리하지 않음
-            authResponseHandler = null;
-          }
-        }, 1000);
-          }
-        });
+    }
   } catch (error) {
     console.error("Google 로그인 처리 실패:", error);
     if (authResponseHandler) {

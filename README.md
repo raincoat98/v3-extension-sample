@@ -12,6 +12,8 @@ test-extension/
 │   ├── content-script.js # Content Script (웹 앱과 통신)
 │   ├── popup.html      # Extension 팝업 UI
 │   ├── popup.js        # Extension 팝업 로직
+│   ├── offscreen.html  # Offscreen 문서 (탭 없이 백그라운드 실행)
+│   ├── offscreen.js    # Offscreen 문서 스크립트
 │   ├── build-config.js # 빌드 스크립트 (환경 변수 주입)
 │   └── dist/           # 빌드 결과물 (Chrome에 로드할 폴더)
 └── web/                # React + Vite + TypeScript 앱 (메인 웹 애플리케이션 + SignInPopup 포함)
@@ -25,20 +27,24 @@ test-extension/
         └── firebase-config.ts # Firebase 설정
 ```
 
-## 인증 플로우 (이벤트 기반)
+## 인증 플로우 (Offscreen API 사용)
 
 1. **Popup** → `sendMessage("LOGIN_GOOGLE")`
-2. **Background SW** → 새 탭 열기 → `https://your-domain.com/signin-popup?extension=true`
-3. **SignInPopup** → URL 파라미터 확인 → 자동으로 Google 로그인 시작
-4. **SignInPopup** → Firebase SDK `signInWithPopup()` 실행 → Google OAuth 팝업
-5. **SignInPopup** → 로그인 성공 시 `window.postMessage`로 인증 결과 전송
-6. **Content Script** → `window.postMessage` 감지 → `chrome.runtime.sendMessage`로 Background에 전달
-7. **Background SW** → 인증 결과 수신 → `chrome.storage.local`에 저장
-8. **Background SW** → Popup에 `AUTH_SUCCESS` 메시지 전송
-9. **Popup** → 로그인 상태 업데이트 및 Firestore 데이터 개수 표시
-10. **Background SW** → 로그인 완료 후 signin-popup 탭 자동 닫기
+2. **Background SW** → Offscreen 문서 생성 (탭 없이 백그라운드 실행)
+3. **Offscreen 문서** → iframe으로 `https://your-domain.com/signin-popup?extension=true` 로드
+4. **SignInPopup** → URL 파라미터 확인 → 자동으로 Google 로그인 시작
+5. **SignInPopup** → Firebase SDK `signInWithPopup()` 실행 → Google OAuth 팝업
+6. **SignInPopup** → 로그인 성공 시 `window.postMessage`로 인증 결과 전송
+7. **Offscreen 문서** → `window.postMessage` 감지 → `chrome.runtime.sendMessage`로 Background에 전달
+8. **Background SW** → 인증 결과 수신 → `chrome.storage.local`에 저장
+9. **Background SW** → Popup에 `AUTH_SUCCESS` 메시지 전송
+10. **Popup** → 로그인 상태 업데이트 및 Firestore 데이터 개수 표시
 
-**참고**: 이벤트 기반 통신을 사용하므로 폴링(주기적 확인) 없이 즉시 처리됩니다.
+**참고**:
+
+- Offscreen API를 사용하여 **탭 없이** 백그라운드에서 인증이 처리됩니다
+- 이벤트 기반 통신을 사용하므로 폴링(주기적 확인) 없이 즉시 처리됩니다
+- 사용자는 탭이 열리거나 닫히는 것을 보지 않습니다
 
 ## 설정 방법
 
@@ -164,18 +170,22 @@ SIGNIN_POPUP_URL=https://your_domain.com/signin-popup
 WEB_APP_URL=https://your_domain.com
 ```
 
-## 데이터 개수 조회 기능
+## 데이터 개수 조회 기능 (Offscreen API 사용)
 
 Extension 팝업에서 로그인 후 Firestore의 데이터 개수를 표시합니다:
 
 1. **Popup** → 로그인 성공 시 `sendMessage("GET_DATA_COUNT")`
-2. **Background SW** → 웹 앱 탭 찾기 또는 새로 열기
-3. **Background SW** → 웹 앱 탭에 스크립트 주입하여 데이터 개수 요청
-4. **Web App (App.tsx)** → `window.postMessage`로 메시지 수신
-5. **Web App** → Firestore에서 데이터 개수 조회
-6. **Web App** → `window.postMessage`로 결과 전송
-7. **Background SW** → 결과를 Popup에 전달
-8. **Popup** → 데이터 개수 표시
+2. **Background SW** → Offscreen 문서 생성 또는 기존 문서 사용 (탭 없이 백그라운드 실행)
+3. **Offscreen 문서** → iframe으로 웹 앱 로드
+4. **Offscreen 문서** → iframe 내 웹 앱에 `window.postMessage`로 데이터 개수 요청
+5. **Web App (App.tsx)** → `window.postMessage`로 메시지 수신
+6. **Web App** → Firestore에서 데이터 개수 조회
+7. **Web App** → `window.postMessage`로 결과 전송
+8. **Offscreen 문서** → 결과를 `chrome.runtime.sendMessage`로 Background에 전달
+9. **Background SW** → 결과를 Popup에 전달
+10. **Popup** → 데이터 개수 표시
+
+**참고**: Offscreen API를 사용하여 **탭 없이** 백그라운드에서 데이터를 조회합니다. 사용자는 탭이 열리거나 닫히는 것을 보지 않습니다.
 
 ## 주의사항
 
@@ -186,3 +196,4 @@ Extension 팝업에서 로그인 후 Firestore의 데이터 개수를 표시합�
 - 빌드 후에는 **`extension/dist` 폴더**를 Chrome Extension으로 로드해야 합니다
 - Extension 아이콘 파일(`icon16.png`, `icon48.png`, `icon128.png`)이 없어도 작동하지만, 추가하면 더 좋습니다
 - Extension은 Firebase를 직접 사용하지 않으며, 모든 Firebase 작업은 웹 앱에서 처리됩니다
+- **Offscreen API 사용**: 이 Extension은 Chrome의 Offscreen API를 사용하여 탭 없이 백그라운드에서 웹 앱과 통신합니다. 사용자는 탭이 열리거나 닫히는 것을 보지 않습니다.
