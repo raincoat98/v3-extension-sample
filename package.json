@@ -1,7 +1,7 @@
 {
-  "name": "firebase-auth-extension-project",
+  "name": "verdantflow",
   "version": "1.0.0",
-  "description": "Firebase Auth Extension 프로젝트",
+  "description": "Todo와 메모를 한곳에서 관리하는 생산성 앱",
   "private": true,
   "scripts": {
     "build": "npm run build:web && npm run build:extension",

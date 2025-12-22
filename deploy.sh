@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Firebase Auth Extension 프로젝트 빌드 및 배포 스크립트
+# VerdantFlow 프로젝트 빌드 및 배포 스크립트
 
 set -e  # 오류 발생 시 스크립트 중단
 

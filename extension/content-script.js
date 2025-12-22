@@ -1,6 +1,6 @@
 // Content Script - 웹 앱과 Extension 간 메시지 중계
 
-console.log("📥 Content script 로드됨");
+console.log("📥 Content script 로드됨", window.location.href);
 
 // ===== 헬퍼 함수 =====
 
@@ -64,16 +64,16 @@ function handleGetDataCount(sendResponse) {
 function handleAuthResult(event) {
   console.log("📥 인증 결과 메시지 수신 (content script):", event.data);
 
+  // Background에 메시지 전송 (tabId는 background에서 sender.tab.id로 가져올 수 있음)
   chrome.runtime.sendMessage(
     {
       type: "AUTH_RESULT_FROM_WEB",
       user: event.data.user,
       idToken: event.data.idToken,
-      tabId: null, // content script에서는 tabId를 직접 알 수 없음
     },
     (response) => {
       if (chrome.runtime.lastError) {
-        console.error("메시지 전송 오류:", chrome.runtime.lastError);
+        console.error("❌ 메시지 전송 오류:", chrome.runtime.lastError);
       } else {
         console.log("✅ 인증 결과 전달 완료");
       }
@@ -99,11 +99,29 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
 // 웹 앱으로부터 postMessage 수신
 window.addEventListener("message", (event) => {
+  // 디버깅: 모든 메시지 로깅
+  if (event.data && event.data.type === "AUTH_RESULT") {
+    console.log("📨 AUTH_RESULT 메시지 수신:", {
+      type: event.data.type,
+      origin: event.origin,
+      currentOrigin: window.location.origin,
+      hasUser: !!event.data.user,
+      hasIdToken: !!event.data.idToken,
+    });
+  }
+
+  // AUTH_RESULT 메시지 처리 (같은 origin만 허용)
   if (
     event.data &&
     event.data.type === "AUTH_RESULT" &&
     event.origin === window.location.origin
   ) {
+    console.log("✅ AUTH_RESULT 메시지 처리 시작 (origin 일치)");
     handleAuthResult(event);
+  } else if (event.data && event.data.type === "AUTH_RESULT") {
+    console.warn("⚠️ AUTH_RESULT 메시지 origin 불일치:", {
+      messageOrigin: event.origin,
+      currentOrigin: window.location.origin,
+    });
   }
 });

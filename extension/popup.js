@@ -1,26 +1,28 @@
 // Popup Script
 
 // ===== DOM 요소 =====
-const loginBtn = document.getElementById("loginBtn");
-const logoutBtn = document.getElementById("logoutBtn");
-const statusDiv = document.getElementById("status");
-const userInfoDiv = document.getElementById("userInfo");
+const loginButtons = document.getElementById("loginButtons");
+const loginGoogleBtn = document.getElementById("loginGoogleBtn");
+const loginEmailBtn = document.getElementById("loginEmailBtn");
+const userHeaderDiv = document.getElementById("userHeader");
+const userEmailSpan = document.getElementById("userEmail");
+const statusBadge = document.getElementById("statusBadge");
+const menuBtn = document.getElementById("menuBtn");
+const dropdownMenu = document.getElementById("dropdownMenu");
+const menuUserInfo = document.getElementById("menuUserInfo");
+const menuLogout = document.getElementById("menuLogout");
+const userInfoModal = document.getElementById("userInfoModal");
 const userDetailsDiv = document.getElementById("userDetails");
+const modalCloseBtn = document.getElementById("modalCloseBtn");
 const loadingDiv = document.getElementById("loading");
 const dataInfoDiv = document.getElementById("dataInfo");
 const dataCountDiv = document.getElementById("dataCount");
+const statusMessageDiv = document.getElementById("statusMessage");
 
 // ===== 헬퍼 함수 =====
 
-// 상태 업데이트
-function updateStatus(message, isLoggedIn) {
-  statusDiv.textContent = message;
-  statusDiv.className = "status " + (isLoggedIn ? "logged-in" : "logged-out");
-}
-
 // 사용자 정보 표시 (XSS 방지)
 function displayUserInfo(user) {
-  userInfoDiv.style.display = "block";
   userDetailsDiv.innerHTML = "";
 
   const emailDiv = document.createElement("div");
@@ -37,6 +39,18 @@ function displayUserInfo(user) {
   userDetailsDiv.appendChild(uidDiv);
 }
 
+// 모달 열기
+function showUserInfoModal() {
+  userInfoModal.classList.add("show");
+}
+
+// 모달 닫기
+function closeUserInfoModal() {
+  userInfoModal.classList.remove("show");
+  dropdownMenu.style.display = "none";
+  reinitializeLucideIcons();
+}
+
 // 데이터 정보 UI 업데이트
 function updateDataInfo(display = true, text = null) {
   if (dataInfoDiv) {
@@ -47,22 +61,45 @@ function updateDataInfo(display = true, text = null) {
   }
 }
 
+// 상태 메시지 UI 업데이트
+function updateStatus(message, isSuccess = false) {
+  if (statusMessageDiv) {
+    statusMessageDiv.textContent = message;
+    statusMessageDiv.style.display = "block";
+    statusMessageDiv.className = isSuccess ? "status logged-in" : "status logged-out";
+
+    // 3초 후 자동 숨김
+    setTimeout(() => {
+      statusMessageDiv.style.display = "none";
+    }, 3000);
+  }
+}
+
+// Lucide 아이콘 다시 초기화
+function reinitializeLucideIcons() {
+  if (window.lucide) {
+    lucide.createIcons();
+  }
+}
+
 // 로그인 상태 UI 업데이트
 function updateLoginUI(isLoggedIn, user = null) {
-  updateStatus(isLoggedIn ? "로그인됨" : "로그인되지 않음", isLoggedIn);
-
   if (isLoggedIn && user) {
+    // 로그인 상태
+    userEmailSpan.textContent = user.email || "사용자";
+    statusBadge.className = "status-badge";
     displayUserInfo(user);
-    userInfoDiv.style.display = "block";
-    loginBtn.style.display = "none";
-    logoutBtn.style.display = "block";
+    userHeaderDiv.style.display = "flex";
+    if (loginButtons) loginButtons.style.display = "none";
     loadDataCount();
   } else {
-    userInfoDiv.style.display = "none";
+    // 로그인되지 않은 상태
+    userHeaderDiv.style.display = "none";
     updateDataInfo(false);
-    loginBtn.style.display = "block";
-    logoutBtn.style.display = "none";
+    if (loginButtons) loginButtons.style.display = "flex";
+    closeUserInfoModal();
   }
+  reinitializeLucideIcons();
 }
 
 // ===== 비즈니스 로직 =====
@@ -136,18 +173,24 @@ async function loadDataCount() {
 
 // ===== 이벤트 리스너 =====
 
-// 로그인 버튼 클릭
-loginBtn.addEventListener("click", () => {
+// 로그인 처리 헬퍼 함수
+function handleLogin(mode) {
+  const loginBtn = mode === "google" ? loginGoogleBtn : loginEmailBtn;
   loginBtn.disabled = true;
+  if (mode === "google" && loginEmailBtn) loginEmailBtn.disabled = true;
+  if (mode === "email" && loginGoogleBtn) loginGoogleBtn.disabled = true;
   loadingDiv.style.display = "block";
   updateStatus("로그인 페이지를 여는 중...", false);
 
-  chrome.runtime.sendMessage("LOGIN_GOOGLE", (response) => {
+  const messageType = mode === "google" ? "LOGIN_GOOGLE" : "LOGIN_EMAIL";
+  chrome.runtime.sendMessage(messageType, () => {
     if (chrome.runtime.lastError) {
       console.error("메시지 전송 오류:", chrome.runtime.lastError);
       updateStatus("로그인 실패: " + chrome.runtime.lastError.message, false);
       loadingDiv.style.display = "none";
       loginBtn.disabled = false;
+      if (mode === "google" && loginEmailBtn) loginEmailBtn.disabled = false;
+      if (mode === "email" && loginGoogleBtn) loginGoogleBtn.disabled = false;
     } else {
       updateStatus(
         "로그인 페이지가 열렸습니다. 새 탭에서 로그인을 진행하세요.",
@@ -155,11 +198,41 @@ loginBtn.addEventListener("click", () => {
       );
     }
   });
+}
+
+// Google 로그인 버튼 클릭
+loginGoogleBtn.addEventListener("click", () => {
+  handleLogin("google");
 });
 
-// 로그아웃 버튼 클릭
-logoutBtn.addEventListener("click", () => {
-  chrome.runtime.sendMessage({ type: "LOGOUT" }, (response) => {
+// 이메일 로그인 버튼 클릭
+loginEmailBtn.addEventListener("click", () => {
+  handleLogin("email");
+});
+
+// 메뉴 버튼 클릭
+menuBtn.addEventListener("click", (e) => {
+  e.stopPropagation();
+  dropdownMenu.style.display =
+    dropdownMenu.style.display === "none" ? "block" : "none";
+});
+
+// 문서 클릭 시 드롭다운 닫기
+document.addEventListener("click", (e) => {
+  if (!menuBtn.contains(e.target) && !dropdownMenu.contains(e.target)) {
+    dropdownMenu.style.display = "none";
+  }
+});
+
+// 사용자 정보 메뉴 클릭
+menuUserInfo.addEventListener("click", () => {
+  showUserInfoModal();
+  dropdownMenu.style.display = "none";
+});
+
+// 로그아웃 메뉴 클릭
+menuLogout.addEventListener("click", () => {
+  chrome.runtime.sendMessage({ type: "LOGOUT" }, () => {
     if (chrome.runtime.lastError) {
       console.error("로그아웃 오류:", chrome.runtime.lastError);
       return;
@@ -167,6 +240,18 @@ logoutBtn.addEventListener("click", () => {
 
     updateLoginUI(false);
   });
+});
+
+// 모달 닫기 버튼 클릭
+modalCloseBtn.addEventListener("click", () => {
+  closeUserInfoModal();
+});
+
+// 모달 배경 클릭 시 닫기
+userInfoModal.addEventListener("click", (e) => {
+  if (e.target === userInfoModal) {
+    closeUserInfoModal();
+  }
 });
 
 // Storage 변경 이벤트 리스너

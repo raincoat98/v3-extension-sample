@@ -1,6 +1,6 @@
-# Firebase Auth Extension 프로젝트
+# VerdantFlow 프로젝트
 
-Chrome Extension v3를 사용한 Firebase Authentication 샘플 프로젝트입니다.
+Todo와 메모를 한곳에서 관리하는 생산성 앱입니다. Chrome Extension v3와 Firebase를 사용합니다.
 
 ## 프로젝트 구조
 

@@ -62,16 +62,26 @@ async function ensureOffscreenDocument() {
 
 // ===== 핵심 비즈니스 로직 =====
 
-// Google 로그인 처리
-async function handleGoogleLogin(sendResponse) {
+// URL에 쿼리 파라미터 추가 헬퍼 함수
+function addQueryParam(url, key, value) {
+  const separator = url.includes("?") ? "&" : "?";
+  return `${url}${separator}${key}=${value}`;
+}
+
+// 로그인 처리 공통 함수
+async function handleLogin(sendResponse, mode = "google") {
   authResponseHandler = sendResponse;
 
   try {
+    // URL에 mode 파라미터 추가 (extension=true는 build-config.js에서 이미 추가됨)
+    let url = SIGNIN_POPUP_URL;
+    url = addQueryParam(url, "mode", mode);
+
     const tab = await chrome.tabs.create({
-      url: SIGNIN_POPUP_URL,
+      url: url,
       active: true,
     });
-    console.log("✅ 로그인 페이지 탭 생성:", tab.id);
+    console.log(`✅ ${mode} 로그인 페이지 탭 생성:`, tab.id, url);
 
     // 최대 2분 후 타임아웃
     setTimeout(() => {
@@ -80,9 +90,19 @@ async function handleGoogleLogin(sendResponse) {
       });
     }, 120000);
   } catch (error) {
-    console.error("❌ 로그인 페이지 열기 오류:", error);
+    console.error(`❌ ${mode} 로그인 페이지 열기 오류:`, error);
     sendAuthError(error);
   }
+}
+
+// Google 로그인 처리
+async function handleGoogleLogin(sendResponse) {
+  await handleLogin(sendResponse, "google");
+}
+
+// 이메일 로그인 처리
+async function handleEmailLogin(sendResponse) {
+  await handleLogin(sendResponse, "email");
 }
 
 // 웹 앱으로부터 인증 결과 처리
@@ -213,6 +233,11 @@ async function handleMessage(message, sender, sendResponse) {
       return;
     }
 
+    if (message === "LOGIN_EMAIL") {
+      handleEmailLogin(sendResponse);
+      return;
+    }
+
     if (message === "GET_DATA_COUNT") {
       console.log("📊 데이터 개수 요청 수신");
       handleGetDataCount(sendResponse);
@@ -240,7 +265,17 @@ async function handleMessage(message, sender, sendResponse) {
 
     if (message?.type === "AUTH_RESULT_FROM_WEB") {
       console.log("📥 인증 결과 수신:", message);
-      const tabId = sender.tab ? sender.tab.id : null;
+      // sender.tab.id 또는 메시지에 포함된 tabId 사용
+      const tabId = sender.tab?.id || message.tabId || null;
+      console.log(
+        "📋 사용할 탭 ID:",
+        tabId,
+        "(sender.tab:",
+        sender.tab?.id,
+        ", message.tabId:",
+        message.tabId,
+        ")"
+      );
       await handleAuthResultFromWeb(message.user, message.idToken, tabId);
       sendResponse({ success: true });
       return;

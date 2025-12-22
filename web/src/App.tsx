@@ -11,6 +11,7 @@ import {
 } from "firebase/firestore";
 import { onAuthStateChanged, signOut, User } from "firebase/auth";
 import { useNavigate } from "react-router-dom";
+import { Plus, RefreshCw, Trash2, LogOut } from "lucide-react";
 import { db, auth } from "./firebase-config";
 import "./App.css";
 
@@ -340,84 +341,47 @@ function App() {
   return (
     <div className="App">
       <header className="App-header">
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            width: "100%",
-            marginBottom: "20px",
-          }}
-        >
-          <div>
-            <h1>Web Application</h1>
-            <p>Firebase Firestore 연동 예제</p>
+        <div className="header-top">
+          <div className="header-left">
+            <h1>🌿 VerdantFlow</h1>
+            <p>Todo와 메모를 한곳에서 관리하세요</p>
           </div>
-          <div
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              alignItems: "flex-end",
-              gap: "10px",
-            }}
-          >
-            <div style={{ fontSize: "14px", color: "#666" }}>{user.email}</div>
+          <div className="header-right">
+            <div className="user-email">{user.email}</div>
             <button
               onClick={handleLogout}
-              style={{
-                padding: "8px 16px",
-                fontSize: "14px",
-                cursor: "pointer",
-                backgroundColor: "#ff6b6b",
-                color: "white",
-                border: "none",
-                borderRadius: "4px",
-              }}
+              className="logout-btn"
+              title="로그아웃"
             >
-              로그아웃
+              <LogOut size={18} />
             </button>
           </div>
         </div>
 
-        <button onClick={addItem} disabled={loading}>
-          항목 추가
-        </button>
+        <div className="button-group">
+          <button onClick={addItem} disabled={loading} title="항목 추가">
+            <Plus size={18} />
+            항목 추가
+          </button>
+          <button onClick={loadData} disabled={loading} title="새로고침">
+            <RefreshCw size={18} />
+            새로고침
+          </button>
+        </div>
 
-        <button onClick={loadData} disabled={loading}>
-          새로고침
-        </button>
-
-        {loading && <p>로딩 중...</p>}
+        {loading && <p className="loading-text">로딩 중...</p>}
 
         {error && (
-          <div
-            style={{
-              margin: "20px 0",
-              padding: "15px",
-              backgroundColor: "rgba(255, 0, 0, 0.1)",
-              border: "1px solid rgba(255, 0, 0, 0.3)",
-              borderRadius: "5px",
-              color: "#ff6b6b",
-            }}
-          >
+          <div className="error-message">
             <strong>오류:</strong> {error}
-            <div style={{ marginTop: "10px", fontSize: "0.9em", opacity: 0.8 }}>
+            <div className="error-hint">
               💡 브라우저 개발자 도구 콘솔(F12)에서 상세 오류를 확인하세요.
             </div>
           </div>
         )}
 
         {successMessage && (
-          <div
-            style={{
-              margin: "20px 0",
-              padding: "15px",
-              backgroundColor: "rgba(0, 255, 0, 0.1)",
-              border: "1px solid rgba(0, 255, 0, 0.3)",
-              borderRadius: "5px",
-              color: "#51cf66",
-            }}
-          >
+          <div className="success-message">
             ✅ {successMessage}
           </div>
         )}
@@ -425,9 +389,8 @@ function App() {
         <div className="data-list">
           <h2>데이터 목록</h2>
           {!loading && data.length === 0 && !error && (
-            <p>
-              데이터가 없습니다. "항목 추가" 버튼을 클릭하여 데이터를
-              추가하세요.
+            <p className="empty-message">
+              데이터가 없습니다. "항목 추가" 버튼을 클릭하여 데이터를 추가하세요.
             </p>
           )}
           {data.length > 0 && (
@@ -443,7 +406,7 @@ function App() {
                     disabled={loading}
                     title="항목 삭제"
                   >
-                    삭제
+                    <Trash2 size={16} />
                   </button>
                 </li>
               ))}
