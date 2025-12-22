@@ -253,6 +253,7 @@ async function handleMessage(message, sender, sendResponse) {
     }
 
     if (message?.type === "LOGOUT") {
+      console.log("🔓 Extension 로그아웃 시작");
       currentUser = null;
       try {
         await chrome.storage.local.remove(["user"]);
@@ -260,6 +261,29 @@ async function handleMessage(message, sender, sendResponse) {
         console.warn("storage 삭제 실패:", e);
       }
       sendResponse({ success: true });
+
+      // 웹 앱에 로그아웃 메시지 전송
+      try {
+        const tabs = await chrome.tabs.query({});
+        tabs.forEach((tab) => {
+          if (tab.url && tab.url.includes(chrome.runtime.getURL(""))) {
+            // Extension 자체 페이지는 제외
+            return;
+          }
+          // 모든 탭에 로그아웃 메시지 전송
+          chrome.tabs.sendMessage(
+            tab.id,
+            { type: "EXTENSION_LOGOUT" },
+            () => {
+              // 에러 무시 (탭이 메시지를 받지 못했을 수 있음)
+              chrome.runtime.lastError;
+            }
+          );
+        });
+        console.log("📤 웹 앱 탭들에 로그아웃 메시지 전송 완료");
+      } catch (error) {
+        console.warn("웹 앱에 로그아웃 메시지 전송 실패:", error);
+      }
       return;
     }
 

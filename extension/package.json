@@ -1,9 +1,13 @@
 {
   "name": "firebase-auth-extension",
   "version": "1.0.0",
+  "type": "module",
   "description": "Firebase Authentication Chrome Extension",
   "scripts": {
     "build": "vite build && node build-config.js"
+  },
+  "dependencies": {
+    "lucide": "^0.473.0"
   },
   "devDependencies": {
     "dotenv": "^16.3.1",

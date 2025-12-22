@@ -1,9 +1,13 @@
 // Extension 빌드 후처리 스크립트
 // Vite 빌드 후 환경 변수를 주입합니다
 
-const fs = require("fs");
-const path = require("path");
-require("dotenv").config({ path: path.join(__dirname, ".env") });
+import fs from "fs";
+import path from "path";
+import { config } from "dotenv";
+import { fileURLToPath } from "url";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+config({ path: path.join(__dirname, ".env") });
 
 const distDir = path.join(__dirname, "dist");
 

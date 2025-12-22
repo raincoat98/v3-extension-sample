@@ -1,5 +1,108 @@
 // Popup Script
 
+import { User, Settings, LogOut } from "lucide";
+
+// ===== 아이콘 헬퍼 함수 =====
+
+// lucide 아이콘을 SVG 문자열로 변환하는 헬퍼 함수
+function iconToSvg(iconData, options = {}) {
+  const { width = 24, height = 24, class: className = "" } = options;
+
+  // iconData는 ["svg", attrs, children] 형태의 배열
+  if (!Array.isArray(iconData) || iconData.length < 2) {
+    console.error("Invalid icon data:", iconData);
+    return "";
+  }
+
+  const [tag, attrs, children] = iconData;
+
+  // 기본 SVG 속성에 옵션으로 전달된 크기와 클래스 적용
+  const svgAttrs = {
+    ...attrs,
+    width: width.toString(),
+    height: height.toString(),
+  };
+
+  if (className) {
+    svgAttrs.class = className;
+  }
+
+  // 속성을 문자열로 변환 (속성 이름은 그대로 사용)
+  const attrsStr = Object.entries(svgAttrs)
+    .map(([key, value]) => `${key}="${value}"`)
+    .join(" ");
+
+  // children 처리 (재귀적으로 처리)
+  function renderChildren(childrenArray) {
+    if (!Array.isArray(childrenArray)) {
+      return "";
+    }
+
+    return childrenArray
+      .map((child) => {
+        if (Array.isArray(child) && child.length >= 2) {
+          const [childTag, childAttrs, childChildren] = child;
+          const childAttrsStr = Object.entries(childAttrs || {})
+            .map(([key, value]) => `${key}="${value}"`)
+            .join(" ");
+
+          if (
+            childChildren &&
+            Array.isArray(childChildren) &&
+            childChildren.length > 0
+          ) {
+            return `<${childTag} ${childAttrsStr}>${renderChildren(
+              childChildren
+            )}</${childTag}>`;
+          }
+          return `<${childTag} ${childAttrsStr} />`;
+        }
+        return "";
+      })
+      .join("");
+  }
+
+  const childrenStr = renderChildren(children || []);
+
+  return `<svg ${attrsStr}>${childrenStr}</svg>`;
+}
+
+// ===== 아이콘 초기화 =====
+function initializeIcons() {
+  const userIconEl = document.getElementById("userIcon");
+  const settingsIconEl = document.getElementById("settingsIcon");
+  const logoutIconEl = document.getElementById("logoutIcon");
+
+  if (userIconEl) {
+    // User는 이미 아이콘 정의 배열이거나 함수일 수 있음
+    const userIconData = typeof User === "function" ? User() : User;
+    userIconEl.innerHTML = iconToSvg(userIconData, {
+      width: 16,
+      height: 16,
+      class: "lucide-icon",
+    });
+  }
+
+  if (settingsIconEl) {
+    const settingsIconData =
+      typeof Settings === "function" ? Settings() : Settings;
+    settingsIconEl.innerHTML = iconToSvg(settingsIconData, {
+      width: 16,
+      height: 16,
+      class: "lucide-icon",
+    });
+  }
+
+  if (logoutIconEl) {
+    const logoutIconData = typeof LogOut === "function" ? LogOut() : LogOut;
+    logoutIconEl.innerHTML = iconToSvg(logoutIconData, {
+      width: 16,
+      height: 16,
+      class: "lucide-icon",
+    });
+  }
+}
+
 // ===== DOM 요소 =====
 const loginButtons = document.getElementById("loginButtons");
 const loginGoogleBtn = document.getElementById("loginGoogleBtn");
@@ -66,7 +169,9 @@ function updateStatus(message, isSuccess = false) {
   if (statusMessageDiv) {
     statusMessageDiv.textContent = message;
     statusMessageDiv.style.display = "block";
-    statusMessageDiv.className = isSuccess ? "status logged-in" : "status logged-out";
+    statusMessageDiv.className = isSuccess
+      ? "status logged-in"
+      : "status logged-out";
 
     // 3초 후 자동 숨김
     setTimeout(() => {
@@ -272,4 +377,5 @@ chrome.runtime.onMessage.addListener((message) => {
 
 // ===== 초기화 =====
 
+initializeIcons();
 loadAuthState();

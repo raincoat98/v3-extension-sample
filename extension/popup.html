@@ -300,16 +300,16 @@
           <button id="menuBtn" class="menu-btn" title="메뉴">⋮</button>
           <div id="dropdownMenu" class="dropdown-menu" style="display: none">
             <button class="menu-item" id="menuUserInfo">
-              <span class="menu-icon"><i data-lucide="user" style="width: 16px; height: 16px;"></i></span>
+              <span class="menu-icon" id="userIcon"></span>
               <span>사용자 정보</span>
             </button>
             <button class="menu-item" id="menuSettings" disabled>
-              <span class="menu-icon"><i data-lucide="settings" style="width: 16px; height: 16px;"></i></span>
+              <span class="menu-icon" id="settingsIcon"></span>
               <span>설정</span>
               <span class="coming-soon">(곧 제공)</span>
             </button>
             <button class="menu-item danger" id="menuLogout">
-              <span class="menu-icon"><i data-lucide="log-out" style="width: 16px; height: 16px;"></i></span>
+              <span class="menu-icon" id="logoutIcon"></span>
               <span>로그아웃</span>
             </button>
           </div>
@@ -342,13 +342,6 @@
       <div id="loading" class="loading" style="display: none">로그인 중...</div>
     </div>
 
-    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
     <script src="popup.js"></script>
-    <script>
-      // Initialize lucide icons after DOM is loaded
-      if (window.lucide) {
-        lucide.createIcons();
-      }
-    </script>
   </body>
 </html>

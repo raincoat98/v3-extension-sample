@@ -35,9 +35,21 @@ function App() {
   const hasExtensionRequestRef = useRef<boolean>(false);
 
   useEffect(() => {
-    // Extension으로부터 데이터 개수 요청 수신
+    // Extension 콘텐츠 스크립트로부터 메시지 수신
     const handleMessage = async (event: MessageEvent) => {
-      // Extension에서 온 메시지인지 확인
+      // Extension 로그아웃 메시지 수신
+      if (event.data && event.data.type === "EXTENSION_LOGOUT") {
+        console.log("📥 Extension 로그아웃 메시지 수신 - 웹 앱 로그아웃 실행");
+        try {
+          await signOut(auth);
+          navigate("/signin-popup?web=true");
+          return;
+        } catch (error) {
+          console.error("웹 앱 로그아웃 실패:", error);
+        }
+      }
+
+      // Extension으로부터 데이터 개수 요청 수신
       if (event.data && event.data.type === "GET_DATA_COUNT_FROM_EXTENSION") {
         hasExtensionRequestRef.current = true;
         console.log("📥 Extension으로부터 데이터 개수 요청 수신");

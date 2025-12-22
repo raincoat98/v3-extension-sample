@@ -94,6 +94,19 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return handleGetDataCount(sendResponse);
   }
 
+  if (message.type === "EXTENSION_LOGOUT") {
+    console.log("📥 Extension 로그아웃 메시지 수신 (content script) - 웹 앱으로 전달");
+    // 웹 앱에 로그아웃 메시지 전송
+    window.postMessage(
+      {
+        type: "EXTENSION_LOGOUT",
+      },
+      window.location.origin
+    );
+    sendResponse({ received: true });
+    return true;
+  }
+
   return false;
 });
 
