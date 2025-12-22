@@ -37,15 +37,35 @@ function App() {
   useEffect(() => {
     // Extension 콘텐츠 스크립트로부터 메시지 수신
     const handleMessage = async (event: MessageEvent) => {
-      // Extension 로그아웃 메시지 수신
+      // 디버깅: 모든 메시지 로깅
       if (event.data && event.data.type === "EXTENSION_LOGOUT") {
-        console.log("📥 Extension 로그아웃 메시지 수신 - 웹 앱 로그아웃 실행");
+        console.log("📨 EXTENSION_LOGOUT 메시지 수신:", {
+          type: event.data.type,
+          origin: event.origin,
+          currentOrigin: window.location.origin,
+        });
+      }
+
+      // Extension 로그아웃 메시지 수신 (같은 origin만 허용)
+      if (
+        event.data &&
+        event.data.type === "EXTENSION_LOGOUT" &&
+        event.origin === window.location.origin
+      ) {
+        console.log("📥 Extension 로그아웃 메시지 수신 - 웹 앱 로그아웃 실행", {
+          origin: event.origin,
+          currentOrigin: window.location.origin,
+        });
         try {
           await signOut(auth);
-          navigate("/signin-popup?web=true");
+          console.log("✅ Firebase 로그아웃 완료 - 로그인 페이지로 이동");
+          // navigate 대신 window.location.href를 사용하여 확실하게 리다이렉트
+          window.location.href = "/signin-popup?web=true";
           return;
         } catch (error) {
-          console.error("웹 앱 로그아웃 실패:", error);
+          console.error("❌ 웹 앱 로그아웃 실패:", error);
+          // 에러가 발생해도 로그인 페이지로 이동 시도
+          window.location.href = "/signin-popup?web=true";
         }
       }
 
@@ -338,7 +358,7 @@ function App() {
     return (
       <div className="App">
         <header className="App-header">
-          <h1>Web Application</h1>
+          <h1>🌿 VerdantFlow</h1>
           <p>로딩 중...</p>
         </header>
       </div>
@@ -393,16 +413,15 @@ function App() {
         )}
 
         {successMessage && (
-          <div className="success-message">
-            ✅ {successMessage}
-          </div>
+          <div className="success-message">✅ {successMessage}</div>
         )}
 
         <div className="data-list">
           <h2>데이터 목록</h2>
           {!loading && data.length === 0 && !error && (
             <p className="empty-message">
-              데이터가 없습니다. "항목 추가" 버튼을 클릭하여 데이터를 추가하세요.
+              데이터가 없습니다. "항목 추가" 버튼을 클릭하여 데이터를
+              추가하세요.
             </p>
           )}
           {data.length > 0 && (

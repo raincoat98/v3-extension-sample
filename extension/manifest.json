@@ -7,7 +7,9 @@
   "host_permissions": [
     "https://*.firebaseapp.com/*",
     "https://*.googleapis.com/*",
-    "https://*.web.app/*"
+    "https://*.web.app/*",
+    "http://localhost/*",
+    "http://127.0.0.1/*"
   ],
   "background": {
     "service_worker": "background.js"
@@ -15,12 +17,22 @@
   "web_accessible_resources": [
     {
       "resources": ["offscreen.html"],
-      "matches": ["https://*.firebaseapp.com/*", "https://*.web.app/*"]
+      "matches": [
+        "https://*.firebaseapp.com/*",
+        "https://*.web.app/*",
+        "http://localhost/*",
+        "http://127.0.0.1/*"
+      ]
     }
   ],
   "content_scripts": [
     {
-      "matches": ["https://*.firebaseapp.com/*", "https://*.web.app/*"],
+      "matches": [
+        "https://*.firebaseapp.com/*",
+        "https://*.web.app/*",
+        "http://localhost/*",
+        "http://127.0.0.1/*"
+      ],
       "js": ["content-script.js"],
       "run_at": "document_start"
     }

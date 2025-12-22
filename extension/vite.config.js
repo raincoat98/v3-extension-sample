@@ -1,6 +1,6 @@
 import { defineConfig } from 'vite';
 import { resolve } from 'path';
-import { readdirSync, copyFileSync, mkdirSync } from 'fs';
+import { readdirSync, copyFileSync, mkdirSync, existsSync } from 'fs';
 import { fileURLToPath } from 'url';
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
@@ -39,6 +39,17 @@ const copyAssetsPlugin = {
         copyFileSync(htmlSrc, htmlDest);
       });
       console.log('✅ HTML 파일 복사 완료');
+
+      // 아이콘 파일 복사
+      const iconFiles = ['icon16.png', 'icon48.png', 'icon128.png'];
+      iconFiles.forEach(iconFile => {
+        const iconSrc = resolve(__dirname, iconFile);
+        const iconDest = resolve(__dirname, 'dist', iconFile);
+        if (existsSync(iconSrc)) {
+          copyFileSync(iconSrc, iconDest);
+        }
+      });
+      console.log('✅ 아이콘 파일 복사 완료');
     } catch (error) {
       console.warn('⚠️ 자산 복사 실패:', error.message);
     }

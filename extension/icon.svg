@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <defs>
+    <linearGradient id="grad1" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#002321;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#0b4d3f;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  
+  <!-- 배경 원 -->
+  <circle cx="64" cy="64" r="60" fill="url(#grad1)"/>
+  
+  <!-- 나뭇잎 모양 -->
+  <path d="M 64 30 Q 45 35, 35 50 Q 30 60, 35 70 Q 40 80, 50 85 Q 60 88, 64 95 Q 68 88, 78 85 Q 88 80, 93 70 Q 98 60, 93 50 Q 83 35, 64 30 Z" 
+        fill="#1a8f8e" 
+        stroke="#2dd4bf" 
+        stroke-width="2"/>
+  
+  <!-- 중심 라인 -->
+  <path d="M 64 30 L 64 95" 
+        stroke="#2dd4bf" 
+        stroke-width="1.5" 
+        opacity="0.6"/>
+  
+  <!-- 작은 장식 점들 -->
+  <circle cx="50" cy="60" r="2" fill="#2dd4bf" opacity="0.8"/>
+  <circle cx="78" cy="65" r="2" fill="#2dd4bf" opacity="0.8"/>
+</svg>
+

@@ -95,14 +95,22 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 
   if (message.type === "EXTENSION_LOGOUT") {
-    console.log("📥 Extension 로그아웃 메시지 수신 (content script) - 웹 앱으로 전달");
+    console.log(
+      "📥 Extension 로그아웃 메시지 수신 (content script) - 웹 앱으로 전달",
+      {
+        currentOrigin: window.location.origin,
+        url: window.location.href,
+      }
+    );
     // 웹 앱에 로그아웃 메시지 전송
+    // targetOrigin을 '*'로 설정하여 모든 origin에서 받을 수 있도록 함 (보안상 일반적으로는 권장하지 않지만, 같은 origin이므로 안전)
     window.postMessage(
       {
         type: "EXTENSION_LOGOUT",
       },
       window.location.origin
     );
+    console.log("📤 웹 앱에 EXTENSION_LOGOUT 메시지 전송 완료");
     sendResponse({ received: true });
     return true;
   }
