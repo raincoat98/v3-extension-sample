@@ -12,6 +12,30 @@ const dataCountDiv = document.getElementById("dataCount");
 // 초기 상태 로드
 loadAuthState();
 
+// Storage 변경 이벤트 리스너 (다른 곳에서 로그인/로그아웃한 경우 동기화)
+chrome.storage.onChanged.addListener((changes, areaName) => {
+  if (areaName === "local" && changes.user) {
+    console.log("📥 Storage 변경 감지 - 상태 업데이트 중...");
+    if (changes.user.newValue) {
+      // 로그인됨
+      updateStatus("로그인됨", true);
+      displayUserInfo(changes.user.newValue);
+      loginBtn.style.display = "none";
+      logoutBtn.style.display = "block";
+      loadDataCount();
+    } else {
+      // 로그아웃됨
+      updateStatus("로그인되지 않음", false);
+      userInfoDiv.style.display = "none";
+      if (dataInfoDiv) {
+        dataInfoDiv.style.display = "none";
+      }
+      loginBtn.style.display = "block";
+      logoutBtn.style.display = "none";
+    }
+  }
+});
+
 // 로그인 버튼 클릭
 loginBtn.addEventListener("click", async () => {
   try {
@@ -22,7 +46,7 @@ loginBtn.addEventListener("click", async () => {
     // Background Service Worker에 로그인 요청 (Promise 기반)
     try {
       // 탭이 열리는 것을 기다리지 않고 즉시 응답 대기 모드로 전환
-    chrome.runtime.sendMessage("LOGIN_GOOGLE", (response) => {
+      chrome.runtime.sendMessage("LOGIN_GOOGLE", (response) => {
         // 이 콜백은 탭이 열린 직후 호출될 수 있으므로, 실제 인증 결과는 AUTH_SUCCESS 메시지로 받음
         if (chrome.runtime.lastError) {
           console.error("메시지 전송 오류:", chrome.runtime.lastError);
@@ -81,33 +105,65 @@ logoutBtn.addEventListener("click", async () => {
   }
 });
 
-// 인증 상태 로드
+// 인증 상태 로드 (storage에서 직접 읽기 - 더 안정적)
 async function loadAuthState() {
   try {
-    // Background에서 현재 사용자 정보 요청 (메모리에서)
-    chrome.runtime.sendMessage({ type: "GET_CURRENT_USER" }, (response) => {
+    // storage에서 읽기 (브라우저 재시작 후 복원)
+    chrome.storage.local.get(["user"], (result) => {
       if (chrome.runtime.lastError) {
-        console.error("상태 로드 오류:", chrome.runtime.lastError);
+        console.error("저장된 상태 로드 오류:", chrome.runtime.lastError);
+        // Background에서 메모리 정보 요청 (fallback)
+        requestUserFromBackground();
         return;
       }
 
-      if (response && response.user) {
+      const storedUser = result?.user;
+      if (storedUser) {
+        console.log("✅ Storage에서 사용자 정보 복원:", storedUser.email);
         updateStatus("로그인됨", true);
-        displayUserInfo(response.user);
+        displayUserInfo(storedUser);
         loginBtn.style.display = "none";
         logoutBtn.style.display = "block";
         // 로그인된 경우 데이터 개수 로드
         loadDataCount();
       } else {
-        updateStatus("로그인되지 않음", false);
-        if (dataInfoDiv) {
-          dataInfoDiv.style.display = "none";
-        }
+        console.log("📭 Storage에 사용자 정보 없음 - Background에서 요청");
+        // Storage에 없으면 Background의 메모리에서 확인
+        requestUserFromBackground();
       }
     });
   } catch (error) {
     console.error("상태 로드 오류:", error);
+    updateStatus("로그인되지 않음", false);
   }
+}
+
+// Background에서 메모리 정보 요청 (fallback)
+function requestUserFromBackground() {
+  chrome.runtime.sendMessage({ type: "GET_CURRENT_USER" }, (response) => {
+    if (chrome.runtime.lastError) {
+      console.warn("Background 상태 로드 실패:", chrome.runtime.lastError);
+      updateStatus("로그인되지 않음", false);
+      if (dataInfoDiv) {
+        dataInfoDiv.style.display = "none";
+      }
+      return;
+    }
+
+    if (response && response.user) {
+      updateStatus("로그인됨", true);
+      displayUserInfo(response.user);
+      loginBtn.style.display = "none";
+      logoutBtn.style.display = "block";
+      // 로그인된 경우 데이터 개수 로드
+      loadDataCount();
+    } else {
+      updateStatus("로그인되지 않음", false);
+      if (dataInfoDiv) {
+        dataInfoDiv.style.display = "none";
+      }
+    }
+  });
 }
 
 // 상태 업데이트

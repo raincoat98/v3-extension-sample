@@ -18,13 +18,17 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     sendResponse({ received: true });
 
     // 확장 프로그램의 인증 정보 가져오기
-    chrome.storage.local.get(["user", "idToken"], (result) => {
-      // 웹 앱에 메시지 전송 (인증 정보 포함)
+    chrome.storage.local.get(["user"], (result) => {
+      if (chrome.runtime.lastError || !result.user) {
+        console.warn("사용자 정보 없음");
+        return;
+      }
+
+      // 웹 앱에 메시지 전송 (사용자 정보만 - idToken은 저장하지 않음)
       window.postMessage(
-        { 
+        {
           type: "GET_DATA_COUNT_FROM_EXTENSION",
-          user: result.user,
-          idToken: result.idToken
+          user: result.user
         },
         window.location.origin
       );

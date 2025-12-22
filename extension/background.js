@@ -26,9 +26,10 @@ const SIGNIN_POPUP_URL = "SIGNIN_POPUP_URL_PLACEHOLDER"; // build-config.js에�
 // 응답 핸들러 저장 (Service Worker에서는 window 객체가 없으므로 전역 변수 사용)
 let authResponseHandler = null;
 
-// 인증 정보 (메모리에만 저장 - 더 안전함)
+// 인증 정보 (메모리 + storage)
+// currentUser: 메모리에 캐시 (빠른 접근)
+// Storage에 저장된 사용자 정보는 브라우저 재시작 후에도 유지
 let currentUser = null;
-let currentIdToken = null;
 
 // Sender 검증 함수
 function isValidSender(sender) {
@@ -36,52 +37,70 @@ function isValidSender(sender) {
   return sender.id === chrome.runtime.id;
 }
 
-// 메시지 리스너
+// 메시지 리스너 (async 지원)
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  // 신뢰할 수 있는 sender인지 확인 (자신의 extension만 허용)
-  if (!isValidSender(sender)) {
-    console.warn("⚠️ 신뢰할 수 없는 sender로부터 메시지 수신:", sender);
-    return false;
-  }
-
-  if (message === "LOGIN_GOOGLE") {
-    handleGoogleLogin(sendResponse);
-    return true; // 비동기 응답을 위해 true 반환
-  }
-
-  if (message === "GET_DATA_COUNT") {
-    console.log("📊 데이터 개수 요청 수신");
-    handleGetDataCount(sendResponse);
-    return true; // 비동기 응답을 위해 true 반환
-  }
-
-  // 현재 사용자 정보 요청
-  if (message && message.type === "GET_CURRENT_USER") {
-    sendResponse({
-      user: currentUser,
-    });
-    return true;
-  }
-
-  // 로그아웃 요청
-  if (message && message.type === "LOGOUT") {
-    currentUser = null;
-    currentIdToken = null;
-    sendResponse({ success: true });
-    return true;
-  }
-
-  // Content script로부터 인증 결과 수신 (이벤트 기반)
-  if (message && message.type === "AUTH_RESULT_FROM_WEB") {
-    console.log("📥 인증 결과 수신:", message);
-    // sender.tab.id를 사용하여 탭 ID 가져오기
-    const tabId = sender.tab ? sender.tab.id : null;
-    handleAuthResultFromWeb(message.user, message.idToken, tabId);
-    return true;
-  }
-
-  return false;
+  // 비동기 처리를 위해 별도 함수에서 실행
+  handleMessage(message, sender, sendResponse);
+  return true; // 비동기 응답 처리
 });
+
+async function handleMessage(message, sender, sendResponse) {
+  try {
+    // 신뢰할 수 있는 sender인지 확인 (자신의 extension만 허용)
+    if (!isValidSender(sender)) {
+      console.warn("⚠️ 신뢰할 수 없는 sender로부터 메시지 수신:", sender);
+      return;
+    }
+
+    if (message === "LOGIN_GOOGLE") {
+      handleGoogleLogin(sendResponse);
+      return;
+    }
+
+    if (message === "GET_DATA_COUNT") {
+      console.log("📊 데이터 개수 요청 수신");
+      handleGetDataCount(sendResponse);
+      return;
+    }
+
+    // 현재 사용자 정보 요청 (storage에서 복원할 수도 있음)
+    if (message && message.type === "GET_CURRENT_USER") {
+      // 메모리에 없으면 storage에서 로드
+      if (!currentUser) {
+        await restoreUserInfo();
+      }
+      sendResponse({
+        user: currentUser,
+      });
+      return;
+    }
+
+    // 로그아웃 요청
+    if (message && message.type === "LOGOUT") {
+      currentUser = null;
+      try {
+        await chrome.storage.local.remove(["user"]);
+      } catch (e) {
+        console.warn("storage 삭제 실패:", e);
+      }
+      sendResponse({ success: true });
+      return;
+    }
+
+    // Content script로부터 인증 결과 수신 (이벤트 기반)
+    if (message && message.type === "AUTH_RESULT_FROM_WEB") {
+      console.log("📥 인증 결과 수신:", message);
+      // sender.tab.id를 사용하여 탭 ID 가져오기
+      const tabId = sender.tab ? sender.tab.id : null;
+      await handleAuthResultFromWeb(message.user, message.idToken, tabId);
+      sendResponse({ success: true }); // 중요: sendResponse 호출
+      return;
+    }
+  } catch (error) {
+    console.error("메시지 처리 오류:", error);
+    sendResponse({ success: false, error: error.message });
+  }
+}
 
 // 데이터 개수 가져오기 처리 (Offscreen Document으로 위임)
 async function handleGetDataCount(sendResponse) {
@@ -89,7 +108,7 @@ async function handleGetDataCount(sendResponse) {
     console.log("📊 Offscreen Document으로 데이터 개수 요청 위임");
 
     // 메모리에 저장된 사용자 정보 확인
-    if (!currentUser || !currentIdToken) {
+    if (!currentUser) {
       sendResponse({
         success: false,
         error: "확장 프로그램에서 먼저 로그인해주세요.",
@@ -103,11 +122,10 @@ async function handleGetDataCount(sendResponse) {
     // Offscreen document가 준비되도록 잠깐 대기
     await new Promise((resolve) => setTimeout(resolve, 100));
 
-    // Offscreen document에 메시지 전송 (사용자 정보 및 idToken 포함)
+    // Offscreen document에 메시지 전송 (사용자 정보만 전달, idToken은 Offscreen에서 Firebase SDK로 가져옴)
     const response = await chrome.runtime.sendMessage({
       type: "GET_DATA_COUNT",
       user: currentUser,
-      idToken: currentIdToken,
     });
 
     sendResponse(response);
@@ -161,20 +179,28 @@ async function handleGoogleLogin(sendResponse) {
 }
 
 // 웹 앱으로부터 인증 결과 처리 (이벤트 기반)
+// idToken은 더 이상 저장하지 않음 (보안: 메모리에만 유지하고 저장하지 않음)
 async function handleAuthResultFromWeb(user, idToken, tabId) {
   try {
     console.log("✅ 웹 앱으로부터 인증 결과 처리 시작");
 
-    // 메모리에만 저장 (보안: storage가 아님)
+    // 사용자 정보를 메모리 및 storage에 저장 (브라우저 재시작 후에도 유지)
     currentUser = user;
-    currentIdToken = idToken;
+    try {
+      await chrome.storage.local.set({
+        user: user,
+        lastLoginTime: Date.now(), // 마지막 로그인 시간도 저장
+      });
+      console.log("✅ 사용자 정보 저장 완료:", user.email || user.uid);
+    } catch (e) {
+      console.warn("⚠️ 사용자 정보 저장 실패 (메모리에는 유지됨):", e);
+    }
 
     // Popup에 응답 전송
     if (authResponseHandler) {
       authResponseHandler({
         success: true,
         user: user,
-        idToken: idToken,
       });
       authResponseHandler = null;
     }
@@ -311,8 +337,56 @@ async function handleAuthResult(user, idToken, error, sendResponse) {
   }
 }
 
-// Extension 설치 시 초기화 (Firebase는 필요할 때 초기화)
-chrome.runtime.onInstalled.addListener(() => {
-  console.log("✅ Extension 설치/업데이트 완료");
-  // Firebase는 필요할 때 초기화하도록 변경 (onInstalled에서는 초기화하지 않음)
+// 저장된 사용자 정보 복원 함수
+async function restoreUserInfo() {
+  try {
+    const stored = await chrome.storage.local.get(["user"]);
+    if (stored?.user) {
+      currentUser = stored.user;
+      console.log(
+        "✅ 저장된 사용자 정보 복원 완료:",
+        stored.user.email || stored.user.uid
+      );
+    } else {
+      currentUser = null;
+      console.log("📭 저장된 사용자 정보 없음");
+    }
+  } catch (error) {
+    console.error("❌ 사용자 정보 복원 실패:", error);
+    // 오류가 발생해도 메모리 상태는 유지
+  }
+}
+
+// Storage 변경 이벤트 리스너 (다른 곳에서 변경된 경우 동기화)
+chrome.storage.onChanged.addListener((changes, areaName) => {
+  if (areaName === "local" && changes.user) {
+    if (changes.user.newValue) {
+      currentUser = changes.user.newValue;
+      console.log(
+        "✅ Storage 변경 감지 - 사용자 정보 업데이트:",
+        currentUser.email
+      );
+    } else {
+      currentUser = null;
+      console.log("✅ Storage 변경 감지 - 사용자 정보 삭제됨");
+    }
+  }
 });
+
+// Extension 시작 시 저장된 사용자 정보 복원
+chrome.runtime.onStartup?.addListener(async () => {
+  console.log("🚀 Extension 시작됨 - 사용자 정보 복원 중...");
+  await restoreUserInfo();
+});
+
+// Extension 설치 시 초기화
+chrome.runtime.onInstalled?.addListener(async (details) => {
+  console.log("✅ Extension 설치/업데이트 완료:", details.reason);
+  await restoreUserInfo();
+});
+
+// Service Worker 시작 시 즉시 복원 (onStartup/onInstalled가 실행되지 않는 경우 대비)
+(async () => {
+  console.log("🚀 Background Service Worker 시작 - 사용자 정보 복원 중...");
+  await restoreUserInfo();
+})();

@@ -51,9 +51,8 @@ async function handleGetDataCount(request, sendResponse) {
       initializeFirebase();
     }
 
-    // Background Script에서 전달받은 사용자 정보와 idToken 확인
+    // Background Script에서 전달받은 사용자 정보 확인
     const user = request.user;
-    const idToken = request.idToken;
 
     if (!user || !user.uid) {
       sendResponse({
@@ -63,25 +62,7 @@ async function handleGetDataCount(request, sendResponse) {
       return;
     }
 
-    // idToken이 있으면 인증 설정 시도
-    if (idToken) {
-      try {
-        // idToken을 사용하여 커스텀 토큰으로 간접 인증
-        // 서버 측 검증을 위해 Firestore 규칙에서 idToken을 검증하도록 설정하거나,
-        // 클라이언트 측에서 직접 idToken 검증
-        console.log("ℹ️ idToken으로 인증 설정 중...");
-
-        // Firebase compat library에서는 직접 idToken으로 로그인할 수 없으므로
-        // Firestore 규칙에서 userId로 직접 검증하고, 클라이언트는 userId로 필터링
-        // Authorization은 Firestore 규칙 레벨에서 처리
-      } catch (error) {
-        console.log("⚠️ idToken 인증 설정 실패 (계속 진행):", error);
-      }
-    }
-
-    // Firestore에서 데이터 개수 조회
-    // 주의: 이 쿼리는 Firestore 규칙의 request.auth이 필요함
-    // 규칙을 업데이트하거나, 다른 인증 방식을 사용해야 함
+    // Firestore에서 데이터 개수 조회 (userId로 필터링)
     const itemsRef = db.collection("items");
     const querySnapshot = await itemsRef
       .where("userId", "==", user.uid)
