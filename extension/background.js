@@ -163,7 +163,13 @@ async function handleAuthResultFromWeb(user, idToken, tabId) {
 // 데이터 개수 가져오기 처리
 async function handleGetDataCount(sendResponse) {
   try {
-    console.log("📊 Offscreen Document으로 데이터 개수 요청 위임");
+    console.log("📊 데이터 개수 요청 처리 시작");
+
+    // currentUser가 메모리에 없으면 storage에서 복원 시도
+    if (!currentUser) {
+      console.log("⚠️ currentUser가 메모리에 없음, storage에서 복원 시도");
+      await restoreUserInfo();
+    }
 
     if (!currentUser) {
       sendResponse({
@@ -172,6 +178,8 @@ async function handleGetDataCount(sendResponse) {
       });
       return;
     }
+
+    console.log("✅ 사용자 정보 확인 완료, Offscreen Document으로 위임");
 
     await ensureOffscreenDocument();
     await new Promise((resolve) => setTimeout(resolve, 100));
