@@ -122,8 +122,17 @@ function SignInPopup() {
       } else {
         // 독립 실행 모드: 메인 페이지로 리다이렉트
         setStatus("로그인 성공! 메인 페이지로 이동합니다...");
+        
+        // URL 파라미터로 웹 앱에서 온 경우 확인
+        const urlParams = new URLSearchParams(window.location.search);
+        const isWebApp = urlParams.get("web") === "true";
+        
         setTimeout(() => {
+          if (isWebApp) {
+            window.location.href = "/";
+          } else {
           window.location.href = "/";
+          }
         }, 1500);
       }
     } catch (error) {

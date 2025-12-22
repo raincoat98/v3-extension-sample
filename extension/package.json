@@ -3,9 +3,11 @@
   "version": "1.0.0",
   "description": "Firebase Authentication Chrome Extension",
   "scripts": {
-    "build": "node build-config.js"
+    "build": "vite build && node build-config.js"
   },
   "devDependencies": {
-    "dotenv": "^16.3.1"
+    "dotenv": "^16.3.1",
+    "terser": "^5.44.1",
+    "vite": "^5.0.0"
   }
 }

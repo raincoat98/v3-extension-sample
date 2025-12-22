@@ -61,14 +61,21 @@ loginBtn.addEventListener("click", async () => {
 // 로그아웃 버튼 클릭
 logoutBtn.addEventListener("click", async () => {
   try {
-    await chrome.storage.local.remove(["user", "idToken", "isAuthenticated"]);
-    updateStatus("로그인되지 않음", false);
-    userInfoDiv.style.display = "none";
-    if (dataInfoDiv) {
-      dataInfoDiv.style.display = "none";
-    }
-    loginBtn.style.display = "block";
-    logoutBtn.style.display = "none";
+    // Background에 로그아웃 요청
+    chrome.runtime.sendMessage({ type: "LOGOUT" }, (response) => {
+      if (chrome.runtime.lastError) {
+        console.error("로그아웃 오류:", chrome.runtime.lastError);
+        return;
+      }
+
+      updateStatus("로그인되지 않음", false);
+      userInfoDiv.style.display = "none";
+      if (dataInfoDiv) {
+        dataInfoDiv.style.display = "none";
+      }
+      loginBtn.style.display = "block";
+      logoutBtn.style.display = "none";
+    });
   } catch (error) {
     console.error("로그아웃 오류:", error);
   }
@@ -77,20 +84,27 @@ logoutBtn.addEventListener("click", async () => {
 // 인증 상태 로드
 async function loadAuthState() {
   try {
-    const result = await chrome.storage.local.get(["user", "isAuthenticated"]);
-    if (result.isAuthenticated && result.user) {
-      updateStatus("로그인됨", true);
-      displayUserInfo(result.user);
-      loginBtn.style.display = "none";
-      logoutBtn.style.display = "block";
-      // 로그인된 경우 데이터 개수 로드
-      loadDataCount();
-    } else {
-      updateStatus("로그인되지 않음", false);
-      if (dataInfoDiv) {
-        dataInfoDiv.style.display = "none";
+    // Background에서 현재 사용자 정보 요청 (메모리에서)
+    chrome.runtime.sendMessage({ type: "GET_CURRENT_USER" }, (response) => {
+      if (chrome.runtime.lastError) {
+        console.error("상태 로드 오류:", chrome.runtime.lastError);
+        return;
       }
-    }
+
+      if (response && response.user) {
+        updateStatus("로그인됨", true);
+        displayUserInfo(response.user);
+        loginBtn.style.display = "none";
+        logoutBtn.style.display = "block";
+        // 로그인된 경우 데이터 개수 로드
+        loadDataCount();
+      } else {
+        updateStatus("로그인되지 않음", false);
+        if (dataInfoDiv) {
+          dataInfoDiv.style.display = "none";
+        }
+      }
+    });
   } catch (error) {
     console.error("상태 로드 오류:", error);
   }
@@ -102,14 +116,24 @@ function updateStatus(message, isLoggedIn) {
   statusDiv.className = "status " + (isLoggedIn ? "logged-in" : "logged-out");
 }
 
-// 사용자 정보 표시
+// 사용자 정보 표시 (XSS 방지)
 function displayUserInfo(user) {
   userInfoDiv.style.display = "block";
-  userDetailsDiv.innerHTML = `
-    <div>이메일: ${user.email || "N/A"}</div>
-    <div>이름: ${user.displayName || "N/A"}</div>
-    <div>UID: ${user.uid || "N/A"}</div>
-  `;
+  userDetailsDiv.innerHTML = ""; // 기존 내용 제거
+
+  // 안전한 텍스트 노드 추가
+  const emailDiv = document.createElement("div");
+  emailDiv.textContent = `이메일: ${user.email || "N/A"}`;
+
+  const nameDiv = document.createElement("div");
+  nameDiv.textContent = `이름: ${user.displayName || "N/A"}`;
+
+  const uidDiv = document.createElement("div");
+  uidDiv.textContent = `UID: ${user.uid || "N/A"}`;
+
+  userDetailsDiv.appendChild(emailDiv);
+  userDetailsDiv.appendChild(nameDiv);
+  userDetailsDiv.appendChild(uidDiv);
 }
 
 // 데이터 개수 로드

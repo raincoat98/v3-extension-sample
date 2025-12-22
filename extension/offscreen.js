@@ -1,218 +1,108 @@
-// Offscreen Document Script
-// 이 문서는 백그라운드에서 실행되며 탭 없이 동작합니다
+// Offscreen Document - Firebase 초기화 및 관리
 
-const WEB_APP_URL = "WEB_APP_URL_PLACEHOLDER"; // build-config.js에서 주입됨
-const SIGNIN_POPUP_URL = "SIGNIN_POPUP_URL_PLACEHOLDER"; // build-config.js에서 주입됨
+// Firebase Config (build-config.js에서 주입됨)
+const FIREBASE_CONFIG = {
+  apiKey: "FIREBASE_API_KEY_PLACEHOLDER",
+  authDomain: "FIREBASE_AUTH_DOMAIN_PLACEHOLDER",
+  projectId: "FIREBASE_PROJECT_ID_PLACEHOLDER",
+  storageBucket: "FIREBASE_STORAGE_BUCKET_PLACEHOLDER",
+  messagingSenderId: "FIREBASE_MESSAGING_SENDER_ID_PLACEHOLDER",
+  appId: "FIREBASE_APP_ID_PLACEHOLDER",
+};
 
-let iframe = null;
-let messageHandlers = new Map();
+let app = null;
+let auth = null;
+let db = null;
 
-// Background Service Worker로부터 메시지 수신
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  console.log("📥 Offscreen 문서로 메시지 수신:", message);
-
-  if (message.type === "GET_DATA_COUNT") {
-    handleGetDataCount().then((response) => {
-      // Background로 응답 전달
-      chrome.runtime.sendMessage({
-        type: "OFFSCREEN_DATA_COUNT_RESPONSE",
-        response: response,
-      });
-      sendResponse({ success: true }); // 메시지 수신 확인
-    }).catch((error) => {
-      chrome.runtime.sendMessage({
-        type: "OFFSCREEN_DATA_COUNT_RESPONSE",
-        response: { success: false, error: error.message },
-      });
-      sendResponse({ success: false });
-    });
-    return true; // 비동기 응답
+// Firebase 초기화
+function initializeFirebase() {
+  if (app) {
+    console.log("✅ Firebase 이미 초기화됨");
+    return;
   }
 
-  if (message.type === "LOGIN_GOOGLE") {
-    handleGoogleLogin().then((response) => {
-      sendResponse(response);
-    }).catch((error) => {
-      sendResponse({ success: false, error: error.message });
-    });
+  try {
+    app = firebase.initializeApp(FIREBASE_CONFIG);
+    auth = firebase.auth();
+    db = firebase.firestore();
+    console.log("✅ Firebase 초기화 완료 (Offscreen)");
+  } catch (error) {
+    console.error("❌ Firebase 초기화 실패:", error);
+  }
+}
+
+// 메시지 리스너
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  if (request.type === "GET_DATA_COUNT") {
+    handleGetDataCount(request, sendResponse);
     return true; // 비동기 응답
   }
 
   return false;
 });
 
-// iframe 로드
-function loadIframe(url) {
-  return new Promise((resolve, reject) => {
-    if (iframe && iframe.src.includes(url)) {
-      console.log("✅ 기존 iframe 사용");
-      resolve(iframe);
+// 데이터 개수 가져오기
+async function handleGetDataCount(request, sendResponse) {
+  try {
+    console.log("📊 Offscreen에서 데이터 개수 조회 시작...");
+
+    // Firebase 초기화
+    if (!app) {
+      initializeFirebase();
+    }
+
+    // Background Script에서 전달받은 사용자 정보와 idToken 확인
+    const user = request.user;
+    const idToken = request.idToken;
+
+    if (!user || !user.uid) {
+      sendResponse({
+        success: false,
+        error: "사용자 정보가 없습니다.",
+      });
       return;
     }
 
-    // 기존 iframe 제거
-    if (iframe) {
-      iframe.remove();
+    // idToken이 있으면 인증 설정 시도
+    if (idToken) {
+      try {
+        // idToken을 사용하여 커스텀 토큰으로 간접 인증
+        // 서버 측 검증을 위해 Firestore 규칙에서 idToken을 검증하도록 설정하거나,
+        // 클라이언트 측에서 직접 idToken 검증
+        console.log("ℹ️ idToken으로 인증 설정 중...");
+
+        // Firebase compat library에서는 직접 idToken으로 로그인할 수 없으므로
+        // Firestore 규칙에서 userId로 직접 검증하고, 클라이언트는 userId로 필터링
+        // Authorization은 Firestore 규칙 레벨에서 처리
+      } catch (error) {
+        console.log("⚠️ idToken 인증 설정 실패 (계속 진행):", error);
+      }
     }
 
-    // 새 iframe 생성
-    iframe = document.createElement("iframe");
-    iframe.src = url;
-    iframe.style.width = "100%";
-    iframe.style.height = "100%";
-    iframe.style.border = "none";
-    iframe.style.position = "fixed";
-    iframe.style.top = "0";
-    iframe.style.left = "0";
+    // Firestore에서 데이터 개수 조회
+    // 주의: 이 쿼리는 Firestore 규칙의 request.auth이 필요함
+    // 규칙을 업데이트하거나, 다른 인증 방식을 사용해야 함
+    const itemsRef = db.collection("items");
+    const querySnapshot = await itemsRef
+      .where("userId", "==", user.uid)
+      .get();
 
-    iframe.onload = () => {
-      console.log("✅ iframe 로드 완료:", url);
-      resolve(iframe);
-    };
+    const count = querySnapshot.size;
+    console.log("✅ 데이터 개수 조회 완료:", count);
 
-    iframe.onerror = () => {
-      console.error("❌ iframe 로드 실패");
-      reject(new Error("iframe 로드 실패"));
-    };
-
-    document.getElementById("iframe-container").appendChild(iframe);
-  });
-}
-
-// 웹 앱으로부터 메시지 수신
-window.addEventListener("message", (event) => {
-  // 보안: origin 확인
-  if (!event.origin.includes(new URL(WEB_APP_URL).origin)) {
-    return;
-  }
-
-  console.log("📥 웹 앱으로부터 메시지 수신:", event.data);
-
-  if (event.data && event.data.type === "DATA_COUNT_RESPONSE") {
-    // 데이터 개수 응답 처리
-    const handlerId = "DATA_COUNT";
-    const handler = messageHandlers.get(handlerId);
-    if (handler) {
-      handler(event.data);
-      messageHandlers.delete(handlerId);
-    }
-  }
-
-  if (event.data && event.data.type === "AUTH_RESULT") {
-    // 인증 결과 처리
-    chrome.runtime.sendMessage({
-      type: "AUTH_RESULT_FROM_WEB",
-      user: event.data.user,
-      idToken: event.data.idToken,
+    sendResponse({
+      success: true,
+      count: count,
+    });
+  } catch (error) {
+    console.error("❌ Offscreen에서 데이터 조회 실패:", error);
+    sendResponse({
+      success: false,
+      error: error.message || "데이터 개수를 가져오는 중 오류가 발생했습니다.",
     });
   }
-});
-
-// 데이터 개수 가져오기
-async function handleGetDataCount() {
-  return new Promise((resolve, reject) => {
-    try {
-      console.log("🔍 웹 앱 iframe 로드 중...");
-      
-      // iframe 로드
-      loadIframe(WEB_APP_URL).then(() => {
-        // React 앱이 로드될 때까지 대기
-        const checkReactLoaded = setInterval(() => {
-          try {
-            const iframeWindow = iframe.contentWindow;
-            const hasReactApp = iframeWindow?.document?.querySelector(".App") !== null;
-
-            if (hasReactApp || iframeWindow?.document?.readyState === "complete") {
-              clearInterval(checkReactLoaded);
-              console.log("✅ React 앱 로드 완료");
-
-              // 약간의 지연 후 메시지 전송
-              setTimeout(() => {
-                // 응답 핸들러 저장
-                messageHandlers.set("DATA_COUNT", (response) => {
-                  console.log("✅ 데이터 개수 응답 수신:", response);
-                  resolve(response);
-                });
-
-                // 웹 앱에 데이터 개수 요청
-                iframe.contentWindow.postMessage(
-                  { type: "GET_DATA_COUNT_FROM_EXTENSION" },
-                  new URL(WEB_APP_URL).origin
-                );
-
-                // 타임아웃 (5초)
-                setTimeout(() => {
-                  if (messageHandlers.has("DATA_COUNT")) {
-                    messageHandlers.delete("DATA_COUNT");
-                    resolve({
-                      success: false,
-                      error: "타임아웃: 웹 앱으로부터 응답을 받지 못했습니다.",
-                    });
-                  }
-                }, 5000);
-              }, 500);
-            }
-          } catch (error) {
-            // Cross-origin 오류는 무시 (iframe이 로드되는 중일 수 있음)
-            if (!error.message.includes("Blocked a frame")) {
-              console.error("❌ 오류:", error);
-            }
-          }
-        }, 100);
-
-        // 최대 10초 대기
-        setTimeout(() => {
-          clearInterval(checkReactLoaded);
-          if (messageHandlers.has("DATA_COUNT")) {
-            messageHandlers.delete("DATA_COUNT");
-            resolve({
-              success: false,
-              error: "웹 앱이 로드되지 않았습니다.",
-            });
-          }
-        }, 10000);
-      }).catch((error) => {
-        console.error("❌ iframe 로드 오류:", error);
-        reject(error);
-      });
-
-    } catch (error) {
-      console.error("❌ handleGetDataCount 오류:", error);
-      reject(error);
-    }
-  });
 }
 
-// Google 로그인 처리
-async function handleGoogleLogin() {
-  return new Promise((resolve, reject) => {
-    try {
-      console.log("🔍 로그인 팝업 iframe 로드 중...");
-      
-      const signinUrl = SIGNIN_POPUP_URL + 
-        (SIGNIN_POPUP_URL.includes("?") ? "&" : "?") + 
-        "extension=true";
-
-      // iframe 로드 (로그인용)
-      loadIframe(signinUrl).then(() => {
-        // 로그인 완료 대기 (AUTH_RESULT 메시지로 처리됨)
-        console.log("⏳ 로그인 완료 대기 중...");
-
-        // 최대 2분 후 타임아웃
-        setTimeout(() => {
-          resolve({
-            success: false,
-            error: "인증 결과를 받지 못했습니다. 시간이 초과되었습니다.",
-          });
-        }, 120000);
-      }).catch((error) => {
-        reject(error);
-      });
-
-    } catch (error) {
-      console.error("❌ handleGoogleLogin 오류:", error);
-      reject(error);
-    }
-  });
-}
-
+// 페이지 로드 시 Firebase 초기화
+console.log("🔄 Offscreen Document 로드됨");
+initializeFirebase();

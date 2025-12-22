@@ -3,7 +3,7 @@
   "name": "Firebase Auth Extension",
   "version": "1.0.0",
   "description": "Firebase Authentication with Google Sign-in",
-  "permissions": ["storage", "tabs", "scripting"],
+  "permissions": ["tabs", "scripting", "offscreen"],
   "host_permissions": [
     "https://*.firebaseapp.com/*",
     "https://*.googleapis.com/*",
@@ -12,9 +12,15 @@
   "background": {
     "service_worker": "background.js"
   },
+  "web_accessible_resources": [
+    {
+      "resources": ["offscreen.html"],
+      "matches": ["https://*.firebaseapp.com/*", "https://*.web.app/*"]
+    }
+  ],
   "content_scripts": [
     {
-      "matches": ["<all_urls>"],
+      "matches": ["https://*.firebaseapp.com/*", "https://*.web.app/*"],
       "js": ["content-script.js"],
       "run_at": "document_start"
     }

@@ -17,11 +17,18 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     // 메시지 채널을 닫기 위해 즉시 응답 (실제 응답은 별도로 전송)
     sendResponse({ received: true });
 
-    // 웹 앱에 메시지 전송
-    window.postMessage(
-      { type: "GET_DATA_COUNT_FROM_EXTENSION" },
-      window.location.origin
-    );
+    // 확장 프로그램의 인증 정보 가져오기
+    chrome.storage.local.get(["user", "idToken"], (result) => {
+      // 웹 앱에 메시지 전송 (인증 정보 포함)
+      window.postMessage(
+        { 
+          type: "GET_DATA_COUNT_FROM_EXTENSION",
+          user: result.user,
+          idToken: result.idToken
+        },
+        window.location.origin
+      );
+    });
 
     // 응답 핸들러 설정
     const responseHandler = (event) => {
